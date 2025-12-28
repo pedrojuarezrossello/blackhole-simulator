@@ -6,21 +6,25 @@
 #include "message_queue.h"
 #include <thread>
 
-message_queue<message<N>> data_queue;
+message_queue<message_kerr<N>> data_queue;
 
 // Angular momentum must be >= sqrt(12)*M
 
 int main( ){
 	// Set up integrator
-	initial_particle_data<N> particle_data = {
-		.initial_radii = create_array<float, N>([](size_t i) { return 6.0f + i * 2.0f; }),
-		.initial_phis = create_array<float, N>([](size_t i) { return 0.0f; }),
-		.initial_thetas = create_array<float, N>([](size_t i) { return 3.141592f / 2.0f; }),
-		.angular_momenta = create_array<float, N>([](size_t i) { return std::sqrtf(13.0f) + i * 0.3f; })
-	};
+	initial_particle_data<spacetime::kerr, N> particle_data;
 
-	 constexpr float black_hole_mass = 1.0f;
-	integrator<N> solver(black_hole_mass, particle_data);
+	particle_data.initial_radii = create_array<float, N>([](size_t i) { return 6.0f + i * 0.5f; });
+	particle_data.initial_p_r = create_array<float, N>([](size_t i) { return 0.0f; });
+	particle_data.initial_phis = create_array<float, N>([](size_t i) { return 0.0f; });
+	particle_data.initial_thetas = create_array<float, N>([](size_t i) {return 3.141592f / 2.0f - i * 0.5f;});
+	particle_data.initial_p_theta = create_array<float, N>([] (size_t i) { return 1.9558; });
+	particle_data.angular_momenta = create_array<float, N>([](size_t i) { return 2.37176f - i * 0.3f; });
+	particle_data.carter_constants = create_array<float, N>([](size_t i) { return 3.82514f; });
+	particle_data.energies = create_array<float, N>([](size_t i) { return 0.935179f; });
+
+	constexpr float spin = 0.3f;
+	kerr_integrator<N> solver(spin, particle_data);
 	 
 	// Set up openFrameworks window
 	ofGLWindowSettings settings;

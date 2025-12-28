@@ -18,7 +18,7 @@ public:
 		cond_var.notify_one();
 	}
 
-	T wait_and_pop() {
+	T pop() {
 		queue_lock lock(m);
 		cond_var.wait(lock, [this] { return !q.empty(); });
 		T res = std::move(q.front());

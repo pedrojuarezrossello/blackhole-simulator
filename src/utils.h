@@ -15,12 +15,29 @@ constexpr std::array<std::decay_t<T>, N> create_array(F&& fn, Args&&... args) {
 	return impl::create_array<T>(std::make_index_sequence<N>(), std::forward<F>(fn), std::forward<Args>(args)...);
 }
 
+enum class spacetime {
+	schwarzschild,
+	kerr
+};
+
 template <size_t N>
-struct initial_particle_data {
+struct shared_data {
 	std::array<float, N> initial_radii;
 	std::array<float, N> initial_phis;
-	std::array<float, N> initial_thetas;
 	std::array<float, N> angular_momenta;
+};
+
+template <spacetime metric, size_t N>
+struct initial_particle_data : public shared_data<N> {
+};
+
+template <size_t N>
+struct initial_particle_data<spacetime::kerr, N> : public shared_data<N> {
+	std::array<float, N> initial_thetas;
+	std::array<float, N> carter_constants;
+	std::array<float, N> energies;
+	std::array<float, N> initial_p_r;
+	std::array<float, N> initial_p_theta;
 };
 
 constexpr size_t N = 8;
@@ -45,6 +62,7 @@ constexpr size_t N = 8;
 	#define SET1_EPI32(x) _mm512_set1_epi32(x)
 	#define MUL(x, y) _mm512_mul_ps(x, y)
 	#define FMADD(x, y, z) _mm512_fmadd_ps(x, y, z)
+	#define FMSUB(x, y, z) _mm512_fmsub_ps(x, y, z)
 	#define ADD(x, y) _mm512_add_ps(x, y)
 	#define SUB(x, y) _mm512_sub_ps(x, y)
 	#define SQRT(x) _mm512_sqrt_ps(x)
@@ -77,8 +95,10 @@ constexpr size_t N = 8;
 	#define SUB(x, y) _mm256_sub_ps(x, y)
 	#ifdef __FMA__
 		#define FMADD(x, y, z) _mm256_fmadd_ps(x, y, z)
+		#define FMSUB(x, y, z) _mm256_fmsub_ps(x, y, z)
 	#else
 		#define FMADD(x, y, z) ADD(MUL(x,y), z)
+		#define FMSUB(x, y, z) SUB(MUL(x, y), z)
 	#endif
 	#define SQRT(x) _mm256_sqrt_ps(x)
 	#define COS(x) _mm256_cos_ps(x)
