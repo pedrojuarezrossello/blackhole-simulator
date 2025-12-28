@@ -18,7 +18,13 @@ void ofApp::setup() {
 	ofEnableDepthTest();
 	ofSetCircleResolution(64);
 	ofBackground(0, 0, 0);
-	camera.setTarget(particles);
+
+	light.setPosition(100, 500, 500);
+	black_hole_sphere.setRadius(2.0f * scale_factor);
+	black_hole_sphere.setResolution(64);
+	black_hole_material.setDiffuseColor(ofColor::orangeRed);
+	black_hole_material.setShininess(128);
+	camera.tiltDeg(60);
 	//camera.enableInertia();
 }
 
@@ -38,17 +44,20 @@ void ofApp::update() {
 }
 
 void ofApp::draw(){
-	camera.begin();
-	ofSetColor(ofColor::orangeRed);
-//	ofFill();
-	ofDrawSphere(0, 0, 2 * scale_factor);
 	
+	camera.begin();
+	light.enable();
+	// ofSetColor(ofColor::orangeRed);
+	//ofDrawSphere(0, 0, 2 * scale_factor);
+
+	black_hole_material.begin();
+	black_hole_sphere.draw();
+	black_hole_material.end();
 	// Draw all particles
 	particles.draw();
 
-	//ofDrawGrid(20, 10, true, true, true, true);
 	ofDisableDepthTest();
+	light.disable();
 	camera.end();
-	
-	//std::ranges::for_each(particles, &particle::draw);
+
 }

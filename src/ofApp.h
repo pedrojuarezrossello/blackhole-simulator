@@ -14,6 +14,7 @@ class ofApp : public ofBaseApp {
 		
 		ofEasyCam camera;
 		particle_set particles;
-		ofRectangle viewMain;
-
+		ofLight light;
+		ofSpherePrimitive black_hole_sphere;
+		ofMaterial black_hole_material;
 };
