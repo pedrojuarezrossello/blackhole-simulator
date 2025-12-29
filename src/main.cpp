@@ -14,16 +14,16 @@ int main( ){
 	// Set up integrator
 	initial_particle_data<spacetime::kerr, N> particle_data;
 
-	particle_data.initial_radii = create_array<float, N>([](size_t i) { return 6.0f + i * 0.5f; });
+	particle_data.initial_radii = create_array<float, N>([](size_t i) { return 7.0f; });
 	particle_data.initial_p_r = create_array<float, N>([](size_t i) { return 0.0f; });
 	particle_data.initial_phis = create_array<float, N>([](size_t i) { return 0.0f; });
-	particle_data.initial_thetas = create_array<float, N>([](size_t i) {return 3.141592f / 2.0f - i * 0.5f;});
+	particle_data.initial_thetas = create_array<float, N>([](size_t i) {return 3.141592f / 4.0f;});
 	particle_data.initial_p_theta = create_array<float, N>([] (size_t i) { return 1.9558; });
-	particle_data.angular_momenta = create_array<float, N>([](size_t i) { return 2.37176f - i * 0.3f; });
+	particle_data.angular_momenta = create_array<float, N>([](size_t i) { return 2.37176f; });
 	particle_data.carter_constants = create_array<float, N>([](size_t i) { return 3.82514f; });
 	particle_data.energies = create_array<float, N>([](size_t i) { return 0.935179f; });
 
-	constexpr float spin = 0.3f;
+	constexpr float spin = 0.3038f;
 	kerr_integrator<N> solver(spin, particle_data);
 	 
 	// Set up openFrameworks window

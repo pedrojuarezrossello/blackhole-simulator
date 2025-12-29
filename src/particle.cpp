@@ -5,8 +5,8 @@ void particle::draw() {
 	// Update and draw trail
 	trail.addVertex(pos.x, pos.y, pos.z);
 	ofSetColor(ofColor::white);
-	if (trail.size() > 30) 
-		trail.removeVertex(0);
+	//if (trail.size() > 30) 
+		//trail.removeVertex(0);
 	
 	trail.draw();
 

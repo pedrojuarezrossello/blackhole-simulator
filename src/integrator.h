@@ -52,7 +52,7 @@
 */
 
 // This will be adjusted later
-constexpr float step = 0.1f;
+constexpr float step = 1.0f;
 
 
 template<size_t N>
@@ -303,6 +303,13 @@ class kerr_integrator {
 	ALIGN std::array<float, N> p_r;
 	ALIGN std::array<float, N> p_theta;
 
+	float get256_avx2(__m256 a, int idx) {
+		__m128i vidx = _mm_cvtsi32_si128(idx); // vmovd
+		__m256i vidx256 = _mm256_castsi128_si256(vidx); // no instructions
+		__m256 shuffled = _mm256_permutevar8x32_ps(a, vidx256); // vpermps
+		return _mm256_cvtss_f32(shuffled);
+	}
+
 	std::array<float, N> _compute_kappa() {
 		std::array<float, N> kappas = {};
 
@@ -426,6 +433,7 @@ class kerr_integrator {
 		MFLOAT res = MUL(cos_theta_ps, second_bracket_ps);
 		res = MUL(res, sin_theta_ps);
 		return MUL(res, S_inv);
+		
 	}
 
 	geodesic_data _next_step_geodesic(float step, size_t idx) {
@@ -443,6 +451,7 @@ class kerr_integrator {
 		MFLOAT angular_momentum_ps = LOAD(&angular_momenta[idx]);
 		MFLOAT kappa_ps = LOAD(&kappas[idx]);
 
+		
 		//K1 -------------------------------------------------------------------
 		MFLOAT radius_k1_ps = _compute_r_dot(D_ps, S_inv_ps, p_r_ps);
 		MFLOAT phi_k1_ps = _compute_phi_dot(radius_ps, theta_ps, D_ps, energy_ps, angular_momentum_ps, S_inv_ps);
@@ -466,7 +475,7 @@ class kerr_integrator {
 		S_inv_ps = _compute_S_inv(adjusted_radius_ps, adjusted_phi_ps);
 		MFLOAT radius_k2_ps = _compute_r_dot(D_ps, S_inv_ps, adjusted_p_r_ps);
 		MFLOAT phi_k2_ps = _compute_phi_dot(adjusted_radius_ps, adjusted_theta_ps, D_ps, energy_ps, angular_momentum_ps, S_inv_ps);
-		MFLOAT theta_k2_ps = _compute_theta_dot(S_inv_ps, adjusted_theta_ps);
+		MFLOAT theta_k2_ps = _compute_theta_dot(S_inv_ps, adjusted_p_theta_ps);
 		MFLOAT p_r_k2_ps = _compute_p_r_dot(adjusted_radius_ps, D_ps, S_inv_ps, energy_ps, kappa_ps, adjusted_p_r_ps, angular_momentum_ps);
 		MFLOAT p_theta_k2_ps = _compute_p_theta_dot(adjusted_theta_ps, S_inv_ps, angular_momentum_ps, energy_ps);
 
@@ -482,7 +491,7 @@ class kerr_integrator {
 		S_inv_ps = _compute_S_inv(adjusted_radius_ps, adjusted_phi_ps);
 		MFLOAT radius_k3_ps = _compute_r_dot(D_ps, S_inv_ps, adjusted_p_r_ps);
 		MFLOAT phi_k3_ps = _compute_phi_dot(adjusted_radius_ps, adjusted_theta_ps, D_ps, energy_ps, angular_momentum_ps, S_inv_ps);
-		MFLOAT theta_k3_ps = _compute_theta_dot(S_inv_ps, adjusted_theta_ps);
+		MFLOAT theta_k3_ps = _compute_theta_dot(S_inv_ps, adjusted_p_theta_ps);
 		MFLOAT p_r_k3_ps = _compute_p_r_dot(adjusted_radius_ps, D_ps, S_inv_ps, energy_ps, kappa_ps, adjusted_p_r_ps, angular_momentum_ps);
 		MFLOAT p_theta_k3_ps = _compute_p_theta_dot(adjusted_theta_ps, S_inv_ps, angular_momentum_ps, energy_ps);
 
@@ -498,7 +507,7 @@ class kerr_integrator {
 		S_inv_ps = _compute_S_inv(adjusted_radius_ps, adjusted_phi_ps);
 		MFLOAT radius_k4_ps = _compute_r_dot(D_ps, S_inv_ps, adjusted_p_r_ps);
 		MFLOAT phi_k4_ps = _compute_phi_dot(adjusted_radius_ps, adjusted_theta_ps, D_ps, energy_ps, angular_momentum_ps, S_inv_ps);
-		MFLOAT theta_k4_ps = _compute_theta_dot(S_inv_ps, adjusted_theta_ps);
+		MFLOAT theta_k4_ps = _compute_theta_dot(S_inv_ps, adjusted_p_theta_ps);
 		MFLOAT p_r_k4_ps = _compute_p_r_dot(adjusted_radius_ps, D_ps, S_inv_ps, energy_ps, kappa_ps, adjusted_p_r_ps, angular_momentum_ps);
 		MFLOAT p_theta_k4_ps = _compute_p_theta_dot(adjusted_theta_ps, S_inv_ps, angular_momentum_ps, energy_ps);
 
@@ -562,7 +571,6 @@ public:
 	}
 
 	void send_data() {
-	//	print_radii();
 		message_kerr<N> data = {};
 		for (size_t i = 0; i < N; i += subproblem_size<N>) {
 			auto [r, p_r, th, p_th, phi] = next_geodesic(step, i);
@@ -591,9 +599,9 @@ public:
 	}
 
 	void print_radii() {
-		std::cout << "Radii: ";
-		for (size_t i = 0; i < N; ++i)
-			std::cout << radii[i] << " ";
+		std::cout << "Data: ";
+		
+		std::cout << radii[0] << " " << thetas[0] << " " << p_theta[0];
 		std::cout << std::endl;
 	}
 
