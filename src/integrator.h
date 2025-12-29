@@ -266,8 +266,30 @@ class schwarzschild_integrator {
 *
 *	dp_theta / dT = (sin(theta) * cos(theta) / S)*(L^2/sin^4(theta)-a^2(E^2-1))
 *
-*  Here p stands for the linear momentum as usual. We'll solve them using RK4 as before.
-* 
+*  Here p stands for the linear momentum as usual. We'll solve them using the
+*  Runge-Kutta-Fehlberg method.
+*
+*	The Butcher's tableau
+*	1/4  |  1/4
+*   3/8  |  3/32		9/32
+*   12/13|  1932/2197	-7200/2197	7296/2197
+*   1    |  439/216		-8			3680/513	-845/4104
+*   1/2  |  -8/27		2			-3544/2565	1859/4104	-11/40
+*	-------------------------------------------------------
+*			25/216		0			1408/2565	2197/4104	-1/5		 (4th order)
+*			16/135		0			6656/12825	28561/56430 -9/50	2/55 (5th order)
+*
+*	k_i = h*f(...) !!
+*
+*	The truncation error is
+*
+*	T = | sum_i=0_to_5 (c_hat(i) - c(i))*k_i |
+*
+*	For a given E, we set the new step to
+*
+*		h_new = 0.9*h*(E/T)^(1/5)
+*
+*	If T>E, we redo the same calculation with h_new as our step size. Else we move on.
 */
 
 const MFLOAT two_ps = SET1(2.0f);
@@ -446,6 +468,9 @@ class kerr_integrator {
 		MFLOAT p_theta_ps = LOAD(&p_theta[idx]);
 		MFLOAT phi_ps = LOAD(&phis[idx]);
 
+		if (radii[7] < 2.8)
+			std::cout << "STOP HERE";
+
 		// Load static data - energy, kappa and angular momentum
 		MFLOAT energy_ps = LOAD(&total_energies[idx]);
 		MFLOAT angular_momentum_ps = LOAD(&angular_momenta[idx]);
@@ -541,6 +566,7 @@ class kerr_integrator {
 		return {radius_ps, p_r_ps, theta_ps, p_theta_ps, phi_ps};
 	}
 
+	// step size -d etect underflow!!
 public:
 
 	kerr_integrator(float									  a,
@@ -571,6 +597,7 @@ public:
 	}
 
 	void send_data() {
+		print_radii();
 		message_kerr<N> data = {};
 		for (size_t i = 0; i < N; i += subproblem_size<N>) {
 			auto [r, p_r, th, p_th, phi] = next_geodesic(step, i);
@@ -599,9 +626,12 @@ public:
 	}
 
 	void print_radii() {
-		std::cout << "Data: ";
-		
-		std::cout << radii[0] << " " << thetas[0] << " " << p_theta[0];
+		std::cout << "Radii: ";
+
+		for (int i = 0; i < N; ++i)
+			std::cout << radii[i] << " ";
+
+		//std::cout << radii[0] << " " << thetas[0] << " " << p_theta[0];
 		std::cout << std::endl;
 	}
 
