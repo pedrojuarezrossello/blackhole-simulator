@@ -292,9 +292,49 @@ class schwarzschild_integrator {
 *	If T>E, we redo the same calculation with h_new as our step size. Else we move on.
 */
 
-const MFLOAT two_ps = SET1(2.0f);
 const MFLOAT minus_two_ps = SET1(-2.0f);
 const MFLOAT one_ps = SET1(1.0f);
+
+// Step size calculation
+const MFLOAT zero_point_nine_ps = SET1(0.9f);
+
+// k2
+const MFLOAT _1_4_ps = SET1(1.0f / 4.0f);
+
+// k3
+const MFLOAT _3_32_ps = SET1(3.0f / 32.0f);
+const MFLOAT _9_32_ps = SET1(9.0f / 32.0f);
+
+// k4
+const MFLOAT _1932_2197_ps = SET1(1932.0f / 2197.0f);
+const MFLOAT _minus_7200_2197_ps = SET1(-7200.0f / 2197.0f);
+const MFLOAT _7296_2197_ps = SET1(7296.0f / 2197.0f);
+
+// k5
+const MFLOAT _439_216_ps = SET1(439.0f / 216.0f);
+const MFLOAT _minus_8_ps = SET1(-8.0f);
+const MFLOAT _3680_513_ps = SET1(3680.0f / 513.0f);
+const MFLOAT _minus_845_4104_ps = SET1(-845.0f / 4104.0f);
+
+// k6
+const MFLOAT _minus_8_27_ps = SET1(-8.0f / 27.0f);
+const MFLOAT two_ps = SET1(2.0f);
+const MFLOAT _minus_3544_2565_ps = SET1(-3544.0f / 2565.0f);
+const MFLOAT _1859_4104_ps = SET1(1858.0f / 4104.0f);
+const MFLOAT _11_40_ps = SET1(-11.0f / 40.0f);
+
+// c order 4
+const MFLOAT _25_216_ps = SET1(25.0f / 216.0f);
+const MFLOAT _1408_2565_ps = SET1(1408.0f / 2565.0f);
+const MFLOAT _2197_4104_ps = SET1(2197.0f / 4104.0f);
+const MFLOAT _minus_1_5_ps = SET1(-1.0f / 5.0f);
+
+// c order 5
+const MFLOAT _16_135_ps = SET1(16.0f / 135.0f);
+const MFLOAT _6656_12825_ps = SET1(6656.0f / 12825.0f);
+const MFLOAT _28561_56430_ps = SET1(28561.0f / 56430.0f);
+const MFLOAT _minus_9_50_ps = SET1(-9.0f / 50.0f);
+const MFLOAT _2_55_ps = SET1(2.0f / 55.0f);
 
 template <size_t N>
 class kerr_integrator {
@@ -467,9 +507,6 @@ class kerr_integrator {
 		MFLOAT p_r_ps = LOAD(&p_r[idx]);
 		MFLOAT p_theta_ps = LOAD(&p_theta[idx]);
 		MFLOAT phi_ps = LOAD(&phis[idx]);
-
-		if (radii[7] < 2.8)
-			std::cout << "STOP HERE";
 
 		// Load static data - energy, kappa and angular momentum
 		MFLOAT energy_ps = LOAD(&total_energies[idx]);
