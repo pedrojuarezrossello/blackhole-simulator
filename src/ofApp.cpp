@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <execution>
 
-extern message_queue<message_kerr<N>> data_queue;
+extern message_queue<message_kerr> data_queue;
 
 constexpr float scale_factor = 30.0f;
 
@@ -29,6 +29,9 @@ void ofApp::setup() {
 void ofApp::update() {
 	// Wait for an update from queue
 	auto message = data_queue.pop();
+
+	if (particles.particles.size() < message.xs.size()) [[unlikely]] 
+		particles.particles = std::vector<particle>(message.xs.size());
 
 	// Update each particle data
 	 for (size_t i = 0; i < N; ++i) {

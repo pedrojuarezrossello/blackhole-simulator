@@ -1,30 +1,34 @@
 #pragma once
 
-#include <array>
+#include <vector>
 #include "utils.h"
 #include "message_queue.h"
 
 // Forward declaration
-template <size_t N>
 struct message_schwarzschild;
-
-template <size_t N>
 struct message_kerr;
 
 // Must be changed when changing the spacetime... kinda hate this I'm tempted to type erase it via dynamic polymorphism
-extern message_queue<message_kerr<N>> data_queue;
+extern message_queue<message_kerr> data_queue;
 
 enum particle_state  {
 	in_orbit,
 	schwarzschild_radius
 };
 
-template <size_t N>
 struct message_schwarzschild {
-	alignas(64) std::array<float, N> xs;
-	alignas(64) std::array<float, N> ys;
-	alignas(64) std::array<float, N> zs;
-	alignas(64) std::array<particle_state, N> states;
+	ALIGN std::vector<float> xs;
+	ALIGN std::vector<float> ys;
+	ALIGN std::vector<float> zs;
+	ALIGN std::vector<particle_state> states;
+
+	message_schwarzschild() = default;
+
+	message_schwarzschild(size_t size)
+		: xs(std::vector<float>(size))
+		, ys(std::vector<float>(size))
+		, zs(std::vector<float>(size))
+		, states(std::vector<particle_state>(size)) { }
 
 	void print() {
 		std::cout << "Message start: " << std::endl;
@@ -73,11 +77,17 @@ struct message_schwarzschild {
 	}
 };
 
-template <size_t N>
 struct message_kerr {
-	alignas(64) std::array<float, N> xs;
-	alignas(64) std::array<float, N> ys;
-	alignas(64) std::array<float, N> zs;
+	ALIGN std::vector<float> xs;
+	ALIGN std::vector<float> ys;
+	ALIGN std::vector<float> zs;
+
+	message_kerr() = default;
+
+	message_kerr(size_t size)
+		: xs(std::vector<float>(size))
+		, ys(std::vector<float>(size))
+		, zs(std::vector<float>(size)) { }
 
 	void print() {
 		std::cout << "Message start: " << std::endl;

@@ -3,7 +3,7 @@
 #include "ofMain.h"
 #include "message.h"
 #include "utils.h"
-#include <array>
+#include <vector>
 
 struct particle {
 	particle() = default;
@@ -19,6 +19,6 @@ struct particle_set : public ofNode {
 	void customDraw() { std::ranges::for_each(particles, &particle::draw); }
 
 	// objects
-	std::array<particle, N> particles;
+	std::vector<particle> particles;
 };
 

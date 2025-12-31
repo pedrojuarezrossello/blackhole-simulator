@@ -1,8 +1,10 @@
 #pragma once
-#include <array>
+#include <vector>
+#include <string_view>
 #include <type_traits>
+#include <fstream>
 
-namespace impl {
+ namespace impl {
 template <typename T, typename F, std::size_t... Is, typename ... Args>
 constexpr std::array<std::decay_t<T>, sizeof...(Is)>
 create_array(std::index_sequence<Is...>, F&& fn, Args&&... args) {
@@ -20,24 +22,106 @@ enum class spacetime {
 	kerr
 };
 
-template <size_t N>
-struct shared_data {
-	std::array<float, N> initial_radii;
-	std::array<float, N> initial_phis;
-	std::array<float, N> angular_momenta;
+struct shared_initial_data {
+	std::vector<float> initial_radii;
+	std::vector<float> initial_phis;
+	std::vector<float> angular_momenta;
+
+	shared_initial_data() = default;
+
+	shared_initial_data(std::string_view file_path) {
+		std::ifstream file(file_path.data());
+
+		if (!file.is_open()) 
+			throw std::runtime_error("File open unsuccessfully");
+
+		std::string line;
+		std::string type;
+		int i = 0;
+		while (std::getline(file, line)) {
+			std::stringstream ss(std::move(line));
+			ss >> type;
+			auto & vec = get_correct(i);
+			while (!ss.eof()) {
+				float x{};
+				ss >> x;
+				vec.push_back(x);
+			}
+			++i;
+		}
+	}
+
+	std::vector<float>& get_correct(int i) {
+		switch (i) {
+		case 0:
+			return initial_radii;
+		case 1:
+			return initial_phis;
+		case 2:
+			return angular_momenta;
+		}
+
+		return angular_momenta;
+	}
 };
 
-template <spacetime metric, size_t N>
-struct initial_particle_data : public shared_data<N> {
+template <spacetime metric>
+struct initial_particle_data : public shared_initial_data {
+	initial_particle_data(std::string_view file_path)
+		: shared_initial_data(file_path) { }
 };
 
-template <size_t N>
-struct initial_particle_data<spacetime::kerr, N> : public shared_data<N> {
-	std::array<float, N> initial_thetas;
-	std::array<float, N> carter_constants;
-	std::array<float, N> energies;
-	std::array<float, N> initial_p_r;
-	std::array<float, N> initial_p_theta;
+template<>
+struct initial_particle_data<spacetime::kerr> : public shared_initial_data {
+	std::vector<float> initial_thetas;
+	std::vector<float> carter_constants;
+	std::vector<float> energies;
+	std::vector<float> initial_p_r;
+	std::vector<float> initial_p_theta;
+
+	initial_particle_data(std::string_view file_path) {
+		std::ifstream file(file_path.data());
+
+		if (!file.is_open())
+			throw std::runtime_error("File open unsuccessfully");
+
+		std::string line;
+		std::string type;
+		int i = 0;
+		while (std::getline(file, line)) {
+			std::stringstream ss(std::move(line));
+			ss >> type;
+			auto & vec = get_correct(i);
+			while (!ss.eof()) {
+				float x {};
+				ss >> x;
+				vec.push_back(x);
+			}
+			++i;
+		}
+	}
+
+	std::vector<float> & get_correct(int i) {
+		switch (i) {
+		case 0:
+			return initial_radii;
+		case 1:
+			return initial_phis;
+		case 2:
+			return angular_momenta;
+		case 3:
+			return initial_thetas;
+		case 4:
+			return carter_constants;
+		case 5:
+			return energies;
+		case 6:
+			return initial_p_r;
+		case 7:
+			return initial_p_theta;
+		}
+		return initial_p_theta;
+	}
 };
 
 constexpr size_t N = 8;

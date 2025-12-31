@@ -9,9 +9,7 @@ class ofApp : public ofBaseApp {
 		void setup();
 		void update();
 		void draw();
-
 	private:
-		
 		ofEasyCam camera;
 		particle_set particles;
 		ofLight light;

@@ -54,17 +54,15 @@
 // This will be adjusted later
 constexpr float step = 1.0f;
 
-
-template<size_t N>
 class schwarzschild_integrator {
 	// It's negative!!
 	MFLOAT _2black_hole_mass;
 
-	ALIGN std::array<float, N> angular_momenta;
-	ALIGN std::array<float, N> radii;
-	ALIGN std::array<float, N> phis;
-	ALIGN std::array<float, N> total_energies;
-	ALIGN std::array<float, N> directions;
+	ALIGN std::vector<float> angular_momenta;
+	ALIGN std::vector<float> radii;
+	ALIGN std::vector<float> phis;
+	ALIGN std::vector<float> total_energies;
+	ALIGN std::vector<float> directions;
 
 	void _update_directions(MFLOAT* new_radii_ps, size_t idx) {
 		// Work out for which lanes E^2-V^2 <= 0 
@@ -158,8 +156,8 @@ class schwarzschild_integrator {
 		MFLOAT second_term_ps = FMADD(MUL(angular_momenta_ps, angular_momenta_ps), radius_inv_squared_ps, one_ps);
 		return MUL(first_term_ps, second_term_ps);
 	}
-	std::array<float, N> _initialise_energies(const std::array<float, N>& radii) {
-		alignas(64) std::array<float, N> energies = {};
+	std::vector<float> _initialise_energies(const std::vector<float>& radii) {
+		ALIGN std::vector<float> energies(radii.size());
 		// We loop through the array in chunks of subproblem_size<N>
 		for (size_t i = 0; i < N; i += subproblem_size<N>) {
 			// Load the initial radii in the ZMM register
@@ -174,13 +172,13 @@ class schwarzschild_integrator {
 
 	public:
 		schwarzschild_integrator(float                _black_hole_mass,
-			initial_particle_data<spacetime::schwarzschild, N> _initial_data)
+			initial_particle_data<spacetime::schwarzschild> _initial_data)
 			: _2black_hole_mass(SET1(-2 * _black_hole_mass))
 			, angular_momenta(std::move(_initial_data.angular_momenta))
 			, radii(std::move(_initial_data.initial_radii))
 			, phis(std::move(_initial_data.initial_phis))
 			, total_energies(_initialise_energies(radii))
-			, directions(create_array<float, N>([](size_t i) {return -1.0f;}))
+			, directions(std::vector<float>(radii.size(), - 1.0f))
 		{ }
 
 		// We'll probs have to use an adaptive step scheme...
@@ -215,7 +213,7 @@ class schwarzschild_integrator {
 		}
 
 		void send_data() {
-			message_schwarzschild<N> data = {};
+			message_schwarzschild data(radii.size());
 			for (size_t i = 0; i < N; i += subproblem_size<N>) {
 				MFLOAT radii_chunk = next_radius(step, i);
 				_update_directions(&radii_chunk, i);
@@ -228,7 +226,7 @@ class schwarzschild_integrator {
 		}
 
 		void send_initial_data() {
-			message_schwarzschild<N> data = {};
+			message_schwarzschild data(radii.size());
 			for (size_t i = 0; i < N; i += subproblem_size<N>) {
 				MFLOAT radii_chunk = LOAD(&radii[i]);
 				MFLOAT phis_chunk = LOAD(&phis[i]);
@@ -287,10 +285,12 @@ class schwarzschild_integrator {
 *
 *	For a given E, we set the new step to
 *
-*		h_new = 0.9*h*(E/T)^(1/5)
+*		h_new = 0.9*h*(E/T)^(1/4)
 *
 *	If T>E, we redo the same calculation with h_new as our step size. Else we move on.
 */
+
+const MFLOAT tolerance_ps = SET1(0.01f);
 
 const MFLOAT minus_two_ps = SET1(-2.0f);
 const MFLOAT one_ps = SET1(1.0f);
@@ -321,7 +321,7 @@ const MFLOAT _minus_8_27_ps = SET1(-8.0f / 27.0f);
 const MFLOAT two_ps = SET1(2.0f);
 const MFLOAT _minus_3544_2565_ps = SET1(-3544.0f / 2565.0f);
 const MFLOAT _1859_4104_ps = SET1(1858.0f / 4104.0f);
-const MFLOAT _11_40_ps = SET1(-11.0f / 40.0f);
+const MFLOAT _minus_11_40_ps = SET1(-11.0f / 40.0f);
 
 // c order 4
 const MFLOAT _25_216_ps = SET1(25.0f / 216.0f);
@@ -336,7 +336,14 @@ const MFLOAT _28561_56430_ps = SET1(28561.0f / 56430.0f);
 const MFLOAT _minus_9_50_ps = SET1(-9.0f / 50.0f);
 const MFLOAT _2_55_ps = SET1(2.0f / 55.0f);
 
-template <size_t N>
+// differences c_hat - c
+const MFLOAT diff_1_ps = SET1(1.0f / 150.0f);
+const MFLOAT diff_3_ps = SET1(3.0f / 100.0f);
+const MFLOAT diff_4_ps = SET1(-48.0f / 225.0f);
+const MFLOAT diff_5_ps = SET1(-1.0f / 20.0f);
+const MFLOAT diff_6_ps = SET1(6.0f / 25.0f);
+
+
 class kerr_integrator {
 
 	struct geodesic_data {
@@ -350,20 +357,25 @@ class kerr_integrator {
 	// a
 	MFLOAT spin_constant;
 
+	// step
+	MFLOAT step_ps;
+
 	// L, Q, E, k
-	ALIGN std::array<float, N> angular_momenta;
-	ALIGN std::array<float, N> carter_constants;
-	ALIGN std::array<float, N> total_energies;
-	ALIGN std::array<float, N> kappas;
+	ALIGN std::vector<float> angular_momenta;
+	ALIGN std::vector<float> carter_constants;
+	ALIGN std::vector<float> total_energies;
+	ALIGN std::vector<float> kappas;
 
 	// r, phi, theta
-	ALIGN std::array<float, N> radii;
-	ALIGN std::array<float, N> phis;
-	ALIGN std::array<float, N> thetas;
+	ALIGN std::vector<float> radii;
+	ALIGN std::vector<float> phis;
+	ALIGN std::vector<float> thetas;
 
 	// p_r, p_theta
-	ALIGN std::array<float, N> p_r;
-	ALIGN std::array<float, N> p_theta;
+	ALIGN std::vector<float> p_r;
+	ALIGN std::vector<float> p_theta;
+
+	
 
 	float get256_avx2(__m256 a, int idx) {
 		__m128i vidx = _mm_cvtsi32_si128(idx); // vmovd
@@ -372,8 +384,19 @@ class kerr_integrator {
 		return _mm256_cvtss_f32(shuffled);
 	}
 
-	std::array<float, N> _compute_kappa() {
-		std::array<float, N> kappas = {};
+	// Move to utils
+	MFLOAT _compute_L2_norm(const std::array<MFLOAT, 5>& arr) {
+		// r^2
+		MFLOAT norm = MUL(arr[0], arr[0]);
+		// sum the squares of the others
+		for (int i = 1; i < 5; ++i)
+			norm = FMADD(arr[i], arr[i], norm);
+
+		return SQRT(norm);
+	}
+
+	std::vector<float> _compute_kappa() {
+		std::vector<float> kappas(total_energies.size());
 
 		for (size_t i = 0; i < N; i+=subproblem_size<N>) {
 			MFLOAT carter_ps = LOAD(&carter_constants[i]);
@@ -498,7 +521,8 @@ class kerr_integrator {
 		
 	}
 
-	geodesic_data _next_step_geodesic(float step, size_t idx) {
+	// TODO - DO SOMETHING IF WITHIN TOLERANCE OF THE OUTER EVENT HORIZON??? - maybe set step to zero if we get too close.
+	geodesic_data _next_step_geodesic(size_t idx) {
 		// Load data from last step (y_n in the RK4 notation)
 		MFLOAT radius_ps = LOAD(&radii[idx]);
 		MFLOAT D_ps = _compute_D(radius_ps);
@@ -513,102 +537,157 @@ class kerr_integrator {
 		MFLOAT angular_momentum_ps = LOAD(&angular_momenta[idx]);
 		MFLOAT kappa_ps = LOAD(&kappas[idx]);
 
+		// Note that all k_i must be multiplied through by h
 		
 		//K1 -------------------------------------------------------------------
-		MFLOAT radius_k1_ps = _compute_r_dot(D_ps, S_inv_ps, p_r_ps);
-		MFLOAT phi_k1_ps = _compute_phi_dot(radius_ps, theta_ps, D_ps, energy_ps, angular_momentum_ps, S_inv_ps);
-		MFLOAT theta_k1_ps = _compute_theta_dot(S_inv_ps, p_theta_ps);
-		MFLOAT p_r_k1_ps = _compute_p_r_dot(radius_ps, D_ps, S_inv_ps, energy_ps, kappa_ps, p_r_ps, angular_momentum_ps);
-		MFLOAT p_theta_k1_ps = _compute_p_theta_dot(theta_ps, S_inv_ps, angular_momentum_ps, energy_ps);
+		MFLOAT radius_k1_ps = MUL(step_ps, _compute_r_dot(D_ps, S_inv_ps, p_r_ps));
+		MFLOAT phi_k1_ps = MUL(step_ps, _compute_phi_dot(radius_ps, theta_ps, D_ps, energy_ps, angular_momentum_ps, S_inv_ps));
+		MFLOAT theta_k1_ps = MUL(step_ps, _compute_theta_dot(S_inv_ps, p_theta_ps));
+		MFLOAT p_r_k1_ps = MUL(step_ps, _compute_p_r_dot(radius_ps, D_ps, S_inv_ps, energy_ps, kappa_ps, p_r_ps, angular_momentum_ps));
+		MFLOAT p_theta_k1_ps = MUL(step_ps, _compute_p_theta_dot(theta_ps, S_inv_ps, angular_momentum_ps, energy_ps));
 
-		// Load steps
-		MFLOAT step_ps = SET1(step);
-		MFLOAT half_step_ps = SET1(step / 2.0f);
-
+		std::array<MFLOAT, 5> k1 = { radius_k1_ps, phi_k1_ps, theta_k1_ps, p_r_k1_ps, p_theta_k1_ps };
+		
 		//K2 --------------------------------------------------------------------
-		MFLOAT adjusted_radius_ps = FMADD(half_step_ps, radius_k1_ps, radius_ps);
-		MFLOAT adjusted_phi_ps = FMADD(half_step_ps, phi_k1_ps, phi_ps);
-		MFLOAT adjusted_theta_ps = FMADD(half_step_ps, theta_k1_ps, theta_ps);
-		MFLOAT adjusted_p_r_ps = FMADD(half_step_ps, p_r_k1_ps, p_r_ps);
-		MFLOAT adjusted_p_theta_ps = FMADD(half_step_ps, p_theta_k1_ps, p_theta_ps);
+		MFLOAT adjusted_radius_ps = FMADD(_1_4_ps, radius_k1_ps, radius_ps);
+		MFLOAT adjusted_phi_ps = FMADD(_1_4_ps, phi_k1_ps, phi_ps);
+		MFLOAT adjusted_theta_ps = FMADD(_1_4_ps, theta_k1_ps, theta_ps);
+		MFLOAT adjusted_p_r_ps = FMADD(_1_4_ps, p_r_k1_ps, p_r_ps);
+		MFLOAT adjusted_p_theta_ps = FMADD(_1_4_ps, p_theta_k1_ps, p_theta_ps);
 
 		// Recalculate S and D
 		D_ps = _compute_D(adjusted_radius_ps);
 		S_inv_ps = _compute_S_inv(adjusted_radius_ps, adjusted_phi_ps);
-		MFLOAT radius_k2_ps = _compute_r_dot(D_ps, S_inv_ps, adjusted_p_r_ps);
-		MFLOAT phi_k2_ps = _compute_phi_dot(adjusted_radius_ps, adjusted_theta_ps, D_ps, energy_ps, angular_momentum_ps, S_inv_ps);
-		MFLOAT theta_k2_ps = _compute_theta_dot(S_inv_ps, adjusted_p_theta_ps);
-		MFLOAT p_r_k2_ps = _compute_p_r_dot(adjusted_radius_ps, D_ps, S_inv_ps, energy_ps, kappa_ps, adjusted_p_r_ps, angular_momentum_ps);
-		MFLOAT p_theta_k2_ps = _compute_p_theta_dot(adjusted_theta_ps, S_inv_ps, angular_momentum_ps, energy_ps);
+		MFLOAT radius_k2_ps = MUL(step_ps, _compute_r_dot(D_ps, S_inv_ps, adjusted_p_r_ps));
+		MFLOAT phi_k2_ps = MUL(step_ps, _compute_phi_dot(adjusted_radius_ps, adjusted_theta_ps, D_ps, energy_ps, angular_momentum_ps, S_inv_ps));
+		MFLOAT theta_k2_ps = MUL(step_ps, _compute_theta_dot(S_inv_ps, adjusted_p_theta_ps));
+		MFLOAT p_r_k2_ps = MUL(step_ps, _compute_p_r_dot(adjusted_radius_ps, D_ps, S_inv_ps, energy_ps, kappa_ps, adjusted_p_r_ps, angular_momentum_ps));
+		MFLOAT p_theta_k2_ps = MUL(step_ps, _compute_p_theta_dot(adjusted_theta_ps, S_inv_ps, angular_momentum_ps, energy_ps));
+
+		std::array<MFLOAT, 5> k2 = { radius_k2_ps, phi_k2_ps, theta_k2_ps, p_r_k2_ps, p_theta_k2_ps };
 
 		//K3 --------------------------------------------------------------------
-		adjusted_radius_ps = FMADD(half_step_ps, radius_k2_ps, radius_ps);
-		adjusted_phi_ps = FMADD(half_step_ps, phi_k2_ps, phi_ps);
-		adjusted_theta_ps = FMADD(half_step_ps, theta_k2_ps, theta_ps);
-		adjusted_p_r_ps = FMADD(half_step_ps, p_r_k2_ps, p_r_ps);
-		adjusted_p_theta_ps = FMADD(half_step_ps, p_theta_k2_ps, p_theta_ps);
+		adjusted_radius_ps = FMADD(_9_32_ps, radius_k2_ps, FMADD(_3_32_ps, radius_k1_ps, radius_ps));
+		adjusted_phi_ps = FMADD(_9_32_ps, phi_k2_ps, FMADD(_3_32_ps, phi_k1_ps, phi_ps));
+		adjusted_theta_ps = FMADD(_9_32_ps, theta_k2_ps, FMADD(_3_32_ps, theta_k1_ps, theta_ps));
+		adjusted_p_r_ps = FMADD(_9_32_ps, p_r_k2_ps, FMADD(_3_32_ps, p_r_k1_ps, p_r_ps));
+		adjusted_p_theta_ps = FMADD(_9_32_ps, p_theta_k2_ps, FMADD(_3_32_ps, p_theta_k1_ps, p_theta_ps));
 
 		// Recalculate S and D
 		D_ps = _compute_D(adjusted_radius_ps);
 		S_inv_ps = _compute_S_inv(adjusted_radius_ps, adjusted_phi_ps);
-		MFLOAT radius_k3_ps = _compute_r_dot(D_ps, S_inv_ps, adjusted_p_r_ps);
-		MFLOAT phi_k3_ps = _compute_phi_dot(adjusted_radius_ps, adjusted_theta_ps, D_ps, energy_ps, angular_momentum_ps, S_inv_ps);
-		MFLOAT theta_k3_ps = _compute_theta_dot(S_inv_ps, adjusted_p_theta_ps);
-		MFLOAT p_r_k3_ps = _compute_p_r_dot(adjusted_radius_ps, D_ps, S_inv_ps, energy_ps, kappa_ps, adjusted_p_r_ps, angular_momentum_ps);
-		MFLOAT p_theta_k3_ps = _compute_p_theta_dot(adjusted_theta_ps, S_inv_ps, angular_momentum_ps, energy_ps);
+		MFLOAT radius_k3_ps = MUL(step_ps, _compute_r_dot(D_ps, S_inv_ps, adjusted_p_r_ps));
+		MFLOAT phi_k3_ps = MUL(step_ps, _compute_phi_dot(adjusted_radius_ps, adjusted_theta_ps, D_ps, energy_ps, angular_momentum_ps, S_inv_ps));
+		MFLOAT theta_k3_ps = MUL(step_ps, _compute_theta_dot(S_inv_ps, adjusted_p_theta_ps));
+		MFLOAT p_r_k3_ps = MUL(step_ps, _compute_p_r_dot(adjusted_radius_ps, D_ps, S_inv_ps, energy_ps, kappa_ps, adjusted_p_r_ps, angular_momentum_ps));
+		MFLOAT p_theta_k3_ps = MUL(step_ps, _compute_p_theta_dot(adjusted_theta_ps, S_inv_ps, angular_momentum_ps, energy_ps));
+
+		std::array<MFLOAT, 5> k3 = { radius_k3_ps, phi_k3_ps, theta_k3_ps, p_r_k3_ps, p_theta_k3_ps };
 
 		//K4 ---------------------------------------------------------------------
-		adjusted_radius_ps = FMADD(step_ps, radius_k3_ps, radius_ps);
-		adjusted_phi_ps = FMADD(step_ps, phi_k3_ps, phi_ps);
-		adjusted_theta_ps = FMADD(step_ps, theta_k3_ps, theta_ps);
-		adjusted_p_r_ps = FMADD(step_ps, p_r_k3_ps, p_r_ps);
-		adjusted_p_theta_ps = FMADD(step_ps, p_theta_k3_ps, p_theta_ps);
+		adjusted_radius_ps = FMADD(_7296_2197_ps, radius_k3_ps, FMADD(_minus_7200_2197_ps, radius_k2_ps, FMADD(_1932_2197_ps, radius_k1_ps, radius_ps)));
+		adjusted_phi_ps = FMADD(_7296_2197_ps, phi_k3_ps, FMADD(_minus_7200_2197_ps, phi_k2_ps, FMADD(_1932_2197_ps, phi_k1_ps, phi_ps)));
+		adjusted_theta_ps = FMADD(_7296_2197_ps, theta_k3_ps, FMADD(_minus_7200_2197_ps, theta_k2_ps, FMADD(_1932_2197_ps, theta_k1_ps, theta_ps)));
+		adjusted_p_r_ps = FMADD(_7296_2197_ps, p_r_k3_ps, FMADD(_minus_7200_2197_ps, p_r_k2_ps, FMADD(_1932_2197_ps, p_r_k1_ps, p_r_ps)));
+		adjusted_p_theta_ps = FMADD(_7296_2197_ps, p_theta_k3_ps, FMADD(_minus_7200_2197_ps, p_theta_k2_ps, FMADD(_1932_2197_ps, p_theta_k1_ps, p_theta_ps)));
 
 		// Recalculate S and D
 		D_ps = _compute_D(adjusted_radius_ps);
 		S_inv_ps = _compute_S_inv(adjusted_radius_ps, adjusted_phi_ps);
-		MFLOAT radius_k4_ps = _compute_r_dot(D_ps, S_inv_ps, adjusted_p_r_ps);
-		MFLOAT phi_k4_ps = _compute_phi_dot(adjusted_radius_ps, adjusted_theta_ps, D_ps, energy_ps, angular_momentum_ps, S_inv_ps);
-		MFLOAT theta_k4_ps = _compute_theta_dot(S_inv_ps, adjusted_p_theta_ps);
-		MFLOAT p_r_k4_ps = _compute_p_r_dot(adjusted_radius_ps, D_ps, S_inv_ps, energy_ps, kappa_ps, adjusted_p_r_ps, angular_momentum_ps);
-		MFLOAT p_theta_k4_ps = _compute_p_theta_dot(adjusted_theta_ps, S_inv_ps, angular_momentum_ps, energy_ps);
+		MFLOAT radius_k4_ps = MUL(step_ps, _compute_r_dot(D_ps, S_inv_ps, adjusted_p_r_ps));
+		MFLOAT phi_k4_ps = MUL(step_ps, _compute_phi_dot(adjusted_radius_ps, adjusted_theta_ps, D_ps, energy_ps, angular_momentum_ps, S_inv_ps));
+		MFLOAT theta_k4_ps = MUL(step_ps, _compute_theta_dot(S_inv_ps, adjusted_p_theta_ps));
+		MFLOAT p_r_k4_ps = MUL(step_ps, _compute_p_r_dot(adjusted_radius_ps, D_ps, S_inv_ps, energy_ps, kappa_ps, adjusted_p_r_ps, angular_momentum_ps));
+		MFLOAT p_theta_k4_ps = MUL(step_ps, _compute_p_theta_dot(adjusted_theta_ps, S_inv_ps, angular_momentum_ps, energy_ps));
 
-		// Sum k's
-		MFLOAT radius_k1_4_ps = ADD(radius_k1_ps, radius_k4_ps);
-		MFLOAT phi_k1_4_ps = ADD(phi_k1_ps, phi_k4_ps);
-		MFLOAT theta_k1_4_ps = ADD(theta_k1_ps, theta_k4_ps);
-		MFLOAT p_r_k1_4_ps = ADD(p_r_k1_ps, p_r_k4_ps);
-		MFLOAT p_theta_k1_4_ps = ADD(p_theta_k1_ps, p_theta_k4_ps);
+		std::array<MFLOAT, 5> k4 = { radius_k4_ps, phi_k4_ps, theta_k4_ps, p_r_k4_ps, p_theta_k4_ps };
 
-		MFLOAT radius_k2_3_ps = ADD(radius_k2_ps, radius_k3_ps);
-		MFLOAT phi_k2_3_ps = ADD(phi_k2_ps, phi_k3_ps);
-		MFLOAT theta_k2_3_ps = ADD(theta_k2_ps, theta_k3_ps);
-		MFLOAT p_r_k2_3_ps = ADD(p_r_k2_ps, p_r_k3_ps);
-		MFLOAT p_theta_k2_3_ps = ADD(p_theta_k2_ps, p_theta_k3_ps);
+		// K5 ----------------------------------------------------------------------
+		adjusted_radius_ps = FMADD(_minus_845_4104_ps, radius_k4_ps, FMADD(_3680_513_ps, radius_k3_ps, FMADD(_minus_8_ps, radius_k2_ps, FMADD(_439_216_ps, radius_k1_ps, radius_ps))));
+		adjusted_phi_ps = FMADD(_minus_845_4104_ps, phi_k4_ps, FMADD(_3680_513_ps, phi_k3_ps, FMADD(_minus_8_ps, phi_k2_ps, FMADD(_439_216_ps, phi_k1_ps, phi_ps))));
+		adjusted_theta_ps = FMADD(_minus_845_4104_ps, theta_k4_ps, FMADD(_3680_513_ps, theta_k3_ps, FMADD(_minus_8_ps, theta_k2_ps, FMADD(_439_216_ps, theta_k1_ps, theta_ps))));
+		adjusted_p_r_ps = FMADD(_minus_845_4104_ps, p_r_k4_ps, FMADD(_3680_513_ps, p_r_k3_ps, FMADD(_minus_8_ps, p_r_k2_ps, FMADD(_439_216_ps, p_r_k1_ps, p_r_ps))));
+		adjusted_p_theta_ps = FMADD(_minus_845_4104_ps, p_theta_k4_ps, FMADD(_3680_513_ps, p_theta_k3_ps, FMADD(_minus_8_ps, p_theta_k2_ps, FMADD(_439_216_ps, p_theta_k1_ps, p_theta_ps))));
 
-		MFLOAT radius_sum_k_ps = FMADD(two_ps, radius_k2_3_ps, radius_k1_4_ps);
-		MFLOAT phi_sum_k_ps = FMADD(two_ps, phi_k2_3_ps, phi_k1_4_ps);
-		MFLOAT theta_sum_k_ps = FMADD(two_ps, theta_k2_3_ps, theta_k1_4_ps);
-		MFLOAT p_r_sum_k_ps = FMADD(two_ps, p_r_k2_3_ps, p_r_k1_4_ps);
-		MFLOAT p_theta_sum_k_ps = FMADD(two_ps, p_theta_k2_3_ps, p_theta_k1_4_ps);
+		// Recalculate S and D
+		D_ps = _compute_D(adjusted_radius_ps);
+		S_inv_ps = _compute_S_inv(adjusted_radius_ps, adjusted_phi_ps);
+		MFLOAT radius_k5_ps = MUL(step_ps, _compute_r_dot(D_ps, S_inv_ps, adjusted_p_r_ps));
+		MFLOAT phi_k5_ps = MUL(step_ps, _compute_phi_dot(adjusted_radius_ps, adjusted_theta_ps, D_ps, energy_ps, angular_momentum_ps, S_inv_ps));
+		MFLOAT theta_k5_ps = MUL(step_ps, _compute_theta_dot(S_inv_ps, adjusted_p_theta_ps));
+		MFLOAT p_r_k5_ps = MUL(step_ps, _compute_p_r_dot(adjusted_radius_ps, D_ps, S_inv_ps, energy_ps, kappa_ps, adjusted_p_r_ps, angular_momentum_ps));
+		MFLOAT p_theta_k5_ps = MUL(step_ps, _compute_p_theta_dot(adjusted_theta_ps, S_inv_ps, angular_momentum_ps, energy_ps));
 
-		MFLOAT sixth_step_ps = SET1(step/6.0f);
+		std::array<MFLOAT, 5> k5 = { radius_k5_ps, phi_k5_ps, theta_k5_ps, p_r_k5_ps, p_theta_k5_ps };
 
-		radius_ps = FMADD(sixth_step_ps, radius_sum_k_ps, radius_ps);
-		phi_ps = FMADD(sixth_step_ps, phi_sum_k_ps, phi_ps);
-		theta_ps = FMADD(sixth_step_ps, theta_sum_k_ps, theta_ps);
-		p_r_ps = FMADD(sixth_step_ps, p_r_sum_k_ps, p_r_ps);
-		p_theta_ps = FMADD(sixth_step_ps, p_theta_sum_k_ps, p_theta_ps);
+		// K6 -----------------------------------------------------------------------
+		adjusted_radius_ps = FMADD(_minus_11_40_ps, radius_k5_ps, FMADD(_1859_4104_ps, radius_k4_ps, FMADD(_minus_3544_2565_ps, radius_k3_ps, FMADD(two_ps, radius_k2_ps, FMADD(_minus_8_27_ps, radius_k1_ps, radius_ps)))));
+		adjusted_phi_ps = FMADD(_minus_11_40_ps, phi_k5_ps, FMADD(_1859_4104_ps, phi_k4_ps, FMADD(_minus_3544_2565_ps, phi_k3_ps, FMADD(two_ps, phi_k2_ps, FMADD(_minus_8_27_ps, phi_k1_ps, phi_ps)))));
+		adjusted_theta_ps = FMADD(_minus_11_40_ps, theta_k5_ps, FMADD(_1859_4104_ps, theta_k4_ps, FMADD(_minus_3544_2565_ps, theta_k3_ps, FMADD(two_ps, theta_k2_ps, FMADD(_minus_8_27_ps, theta_k1_ps, theta_ps)))));
+		adjusted_p_r_ps = FMADD(_minus_11_40_ps, p_r_k5_ps, FMADD(_1859_4104_ps, p_r_k4_ps, FMADD(_minus_3544_2565_ps, p_r_k3_ps, FMADD(two_ps, p_r_k2_ps, FMADD(_minus_8_27_ps, p_r_k1_ps, p_r_ps)))));
+		adjusted_p_theta_ps = FMADD(_minus_11_40_ps, p_theta_k5_ps, FMADD(_1859_4104_ps, p_theta_k4_ps, FMADD(_minus_3544_2565_ps, p_theta_k3_ps, FMADD(two_ps, p_theta_k2_ps, FMADD(_minus_8_27_ps, p_theta_k1_ps, p_theta_ps)))));
+
+		// Recalculate S and D
+		D_ps = _compute_D(adjusted_radius_ps);
+		S_inv_ps = _compute_S_inv(adjusted_radius_ps, adjusted_phi_ps);
+		MFLOAT radius_k6_ps = MUL(step_ps, _compute_r_dot(D_ps, S_inv_ps, adjusted_p_r_ps));
+		MFLOAT phi_k6_ps = MUL(step_ps, _compute_phi_dot(adjusted_radius_ps, adjusted_theta_ps, D_ps, energy_ps, angular_momentum_ps, S_inv_ps));
+		MFLOAT theta_k6_ps = MUL(step_ps, _compute_theta_dot(S_inv_ps, adjusted_p_theta_ps));
+		MFLOAT p_r_k6_ps = MUL(step_ps, _compute_p_r_dot(adjusted_radius_ps, D_ps, S_inv_ps, energy_ps, kappa_ps, adjusted_p_r_ps, angular_momentum_ps));
+		MFLOAT p_theta_k6_ps = MUL(step_ps, _compute_p_theta_dot(adjusted_theta_ps, S_inv_ps, angular_momentum_ps, energy_ps));
+
+		std::array<MFLOAT, 5> k6 = { radius_k6_ps, phi_k6_ps, theta_k6_ps, p_r_k6_ps, p_theta_k6_ps };
+
+		// compute the difference as a vector and compute the L2 norm - this will be our error
+		auto diff = [&k1, &k3, &k4, &k5, &k6](size_t i) {
+			//sum_i = 1_to_6(c_hat(i) - c(i)) * k_i
+			return FMADD(k6[i], diff_6_ps, FMADD(k5[i], diff_5_ps, FMADD(k4[i], diff_4_ps, FMADD(k3[i], diff_3_ps, MUL(k1[i],diff_1_ps)))));
+		};
+
+		std::array<MFLOAT, 5> diff_k = create_array<MFLOAT, 5>(diff);
+
+		MFLOAT error_ps = _compute_L2_norm(diff_k);
+		
+		// compare with tolerance
+		MFLOAT above_error_mask = CMP(error_ps, tolerance_ps, _CMP_GT_OQ);
+
+		// new step size
+		// new_step = 0.9 * previous_step * fourth_root(tolerance / error)
+		MFLOAT tolerance_over_error_ps = MUL(tolerance_ps, RCP(error_ps));
+		MFLOAT fourth_root_ps = SQRT(SQRT(tolerance_over_error_ps));
+		step_ps = MUL(MUL(zero_point_nine_ps, step_ps), fourth_root_ps);
+
+		// clamp step_ps
+		step_ps = _mm256_min_ps(step_ps, SET1(5.0f));
+		step_ps = _mm256_max_ps(step_ps, SET1(0.000001f));
+
+		// should we recompute
+		bool recompute = !_mm256_testz_ps(above_error_mask, above_error_mask);
+
+		if (recompute) {
+			auto [_radius_ps, _p_r_ps, _theta_ps, _p_theta_ps, _phi_ps] = _next_step_geodesic(idx);
+			radius_ps = _radius_ps;
+			p_r_ps = _p_r_ps;
+			theta_ps = _theta_ps;
+			p_theta_ps = _p_theta_ps;
+			phi_ps = _phi_ps;
+		} else {
+			radius_ps = FMADD(_minus_1_5_ps, radius_k5_ps, FMADD(_2197_4104_ps, radius_k4_ps, FMADD(_1408_2565_ps, radius_k3_ps, FMADD(_25_216_ps, radius_k1_ps, radius_ps))));
+			phi_ps = FMADD(_minus_1_5_ps, phi_k5_ps, FMADD(_2197_4104_ps, phi_k4_ps, FMADD(_1408_2565_ps, phi_k3_ps, FMADD(_25_216_ps, phi_k1_ps, phi_ps))));
+			theta_ps = FMADD(_minus_1_5_ps, theta_k5_ps, FMADD(_2197_4104_ps, theta_k4_ps, FMADD(_1408_2565_ps, theta_k3_ps, FMADD(_25_216_ps, theta_k1_ps, theta_ps))));
+			p_r_ps = FMADD(_minus_1_5_ps, p_r_k5_ps, FMADD(_2197_4104_ps, p_r_k4_ps, FMADD(_1408_2565_ps, p_r_k3_ps, FMADD(_25_216_ps, p_r_k1_ps, p_r_ps))));
+			p_theta_ps = FMADD(_minus_1_5_ps, p_theta_k5_ps, FMADD(_2197_4104_ps, p_theta_k4_ps, FMADD(_1408_2565_ps, p_theta_k3_ps, FMADD(_25_216_ps, p_theta_k1_ps, p_theta_ps))));
+		}
 
 		return {radius_ps, p_r_ps, theta_ps, p_theta_ps, phi_ps};
 	}
 
-	// step size -d etect underflow!!
 public:
 
 	kerr_integrator(float									  a,
-					initial_particle_data<spacetime::kerr, N> _initial_data)
+					initial_particle_data<spacetime::kerr> _initial_data)
 		: spin_constant(SET1(a))
+		, step_ps(SET1(1.0f))
 		, angular_momenta(std::move(_initial_data.angular_momenta))
 		, carter_constants(std::move(_initial_data.carter_constants))
 		, total_energies(std::move(_initial_data.energies))
@@ -620,9 +699,9 @@ public:
 		, p_theta(std::move(_initial_data.initial_p_theta)) {}
 
 
-	geodesic_data next_geodesic(float step, size_t idx) {
+	geodesic_data next_geodesic(size_t idx) {
 		// calc step here 
-		auto [r, pr, th, p_th, phi] = _next_step_geodesic(step, idx);
+		auto [r, pr, th, p_th, phi] = _next_step_geodesic(idx);
 
 		STORE(&radii[idx], r);
 		STORE(&p_r[idx], pr);
@@ -630,14 +709,14 @@ public:
 		STORE(&p_theta[idx], p_th);
 		STORE(&phis[idx], phi);
 
-		return { r, pr, th, p_th, phi };
+		return { r, pr, th, p_th, phi};
 	}
 
 	void send_data() {
-		print_radii();
-		message_kerr<N> data = {};
+		//print_radii();
+		message_kerr data(radii.size());
 		for (size_t i = 0; i < N; i += subproblem_size<N>) {
-			auto [r, p_r, th, p_th, phi] = next_geodesic(step, i);
+			auto [r, p_r, th, p_th, phi] = next_geodesic(i);
 			data.convert_and_add(r, phi, th, spin_constant, i);
 		}
 
@@ -645,7 +724,7 @@ public:
 	}
 
 	void send_initial_data() {
-		message_kerr<N> data = {};
+		message_kerr data(radii.size());
 		for (size_t i = 0; i < N; i += subproblem_size<N>) {
 			auto r = LOAD(&radii[i]);
 			auto th = LOAD(&thetas[i]);
