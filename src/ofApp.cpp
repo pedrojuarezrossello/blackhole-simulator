@@ -29,16 +29,16 @@ void ofApp::setup() {
 void ofApp::update() {
 	// Wait for an update from queue
 	auto message = data_queue.pop();
-
+	
 	if (particles.particles.size() < message.xs.size()) [[unlikely]] 
 		particles.particles = std::vector<particle>(message.xs.size());
 
 	// Update each particle data
+	size_t N = message.xs.size();
 	 for (size_t i = 0; i < N; ++i) {
-		this->particles.particles[i].pos.x = message.xs[i] * scale_factor;
-		this->particles.particles[i].pos.y = message.ys[i] * scale_factor;
-		this->particles.particles[i].pos.z = message.zs[i] * scale_factor;
-	//	this->particles.particles[i].state = message.states[i];
+		particles.particles[i].pos.x = message.xs[i] * scale_factor;
+		particles.particles[i].pos.y = message.ys[i] * scale_factor;
+		particles.particles[i].pos.z = message.zs[i] * scale_factor;
 	}
 }
 

@@ -51,11 +51,11 @@
 	Then y_n approximates y(t_n) with a total error of order O(h^4).
 */
 
-// This will be adjusted later
-constexpr float step = 1.0f;
+
+constexpr float step = 0.5f;
 
 class schwarzschild_integrator {
-	// It's negative!!
+	// It's negative i.e. -2M !!
 	MFLOAT _2black_hole_mass;
 
 	ALIGN std::vector<float> angular_momenta;
@@ -76,8 +76,8 @@ class schwarzschild_integrator {
 		MFLOAT res = MASK_MUL(nonnegative_mask, direction_ps, minus_one_ps, direction_ps);
 		MFLOAT adjusted_radius_ps = *new_radii_ps;
 	
-		//Update the corresponding radii to wiggle them away from the energy peak where E^2-V^2<=0
-		while (!_mm256_testz_ps(nonnegative_mask, nonnegative_mask)) {
+		//Update the corresponding radii to wiggle them away from the energy peak where E^2-V^2=0
+		while (!TESTZ(nonnegative_mask, nonnegative_mask)) {
 			MFLOAT step_ps = SET1(0.05f);
 			// Move radius a bit further along the direction of direction_ps
 			step_ps = MUL(step_ps, res);
@@ -92,9 +92,9 @@ class schwarzschild_integrator {
 	}
 
 	MFLOAT _rhs_radius_ode_squared(MFLOAT total_energy, MFLOAT arg_for_potential, size_t idx) {
-		// a^2 - b^2 = (a-b)*(a+b)
+		// a^2 - b^2 = a*a - b^2
 		MFLOAT potential = _potential_energy(arg_for_potential, idx);
-		return MUL(SUB(total_energy, potential), ADD(total_energy, potential));
+		return FMSUB(total_energy, total_energy, MUL(potential, potential));
 	}
 
 	MFLOAT _next_step_radius(MFLOAT prev_radius, float step, size_t idx) {
@@ -147,7 +147,7 @@ class schwarzschild_integrator {
 
 	MFLOAT _potential_energy(MFLOAT radius, size_t idx) {
 		MFLOAT one_ps = SET1(1.0f);
-		// Compute radius inverse with a built-in intrisic - note it's an approximation...
+		// Compute radius inverse with a built-in intrisic 
 		MFLOAT radius_inv_ps = RCP(radius);
 		MFLOAT radius_inv_squared_ps = MUL(radius_inv_ps, radius_inv_ps);
 		// Note that _2black_hole_mass is negative
@@ -158,13 +158,11 @@ class schwarzschild_integrator {
 	}
 	std::vector<float> _initialise_energies(const std::vector<float>& radii) {
 		ALIGN std::vector<float> energies(radii.size());
-		// We loop through the array in chunks of subproblem_size<N>
-		for (size_t i = 0; i < N; i += subproblem_size<N>) {
-			// Load the initial radii in the ZMM register
+		size_t N = radii.size();
+		for (size_t i = 0; i < N; i += subproblem_size) {
 			MFLOAT initial_radii_ps = LOAD(&radii[i]);
 			// Compute the potential energies for this chunk
 			MFLOAT potential_energies_ps = _potential_energy(initial_radii_ps, i);
-			// Store the total energy
 			STORE(&energies[i], potential_energies_ps);
 		}
 		return energies;
@@ -179,9 +177,13 @@ class schwarzschild_integrator {
 			, phis(std::move(_initial_data.initial_phis))
 			, total_energies(_initialise_energies(radii))
 			, directions(std::vector<float>(radii.size(), - 1.0f))
-		{ }
+		{
+			size_t N = radii.size();
+			assert(angular_momenta.size() == N, "Angular momenta must have the same size as radii");
+			assert(phis.size() == N, "Phi values must have the same size as radii");
+			assert(_black_hole_mass > 0.0f, "Black hole mass must be positive");
+		}
 
-		// We'll probs have to use an adaptive step scheme...
 		MFLOAT next_radius(float step, size_t idx) {
 			// Load and compute next radii
 			MFLOAT prev_radius_ps = LOAD(&radii[idx]);
@@ -206,6 +208,7 @@ class schwarzschild_integrator {
 		}
 
 		void print_radii() {
+			size_t N = radii.size();
 			std::cout << "Radii: ";
 			for (size_t i = 0; i < N; ++i)
 				std::cout << radii[i] << " ";
@@ -214,7 +217,8 @@ class schwarzschild_integrator {
 
 		void send_data() {
 			message_schwarzschild data(radii.size());
-			for (size_t i = 0; i < N; i += subproblem_size<N>) {
+			size_t N = radii.size();
+			for (size_t i = 0; i < N; i += subproblem_size) {
 				MFLOAT radii_chunk = next_radius(step, i);
 				_update_directions(&radii_chunk, i);
 				MFLOAT phis_chunk = next_phi(step, i);
@@ -227,7 +231,8 @@ class schwarzschild_integrator {
 
 		void send_initial_data() {
 			message_schwarzschild data(radii.size());
-			for (size_t i = 0; i < N; i += subproblem_size<N>) {
+			size_t N = radii.size();
+			for (size_t i = 0; i < N; i += subproblem_size) {
 				MFLOAT radii_chunk = LOAD(&radii[i]);
 				MFLOAT phis_chunk = LOAD(&phis[i]);
 				MFLOAT thetas_chunk = SET1(3.141592f / 2.0f); 
@@ -375,30 +380,10 @@ class kerr_integrator {
 	ALIGN std::vector<float> p_r;
 	ALIGN std::vector<float> p_theta;
 
-	
-
-	float get256_avx2(__m256 a, int idx) {
-		__m128i vidx = _mm_cvtsi32_si128(idx); // vmovd
-		__m256i vidx256 = _mm256_castsi128_si256(vidx); // no instructions
-		__m256 shuffled = _mm256_permutevar8x32_ps(a, vidx256); // vpermps
-		return _mm256_cvtss_f32(shuffled);
-	}
-
-	// Move to utils
-	MFLOAT _compute_L2_norm(const std::array<MFLOAT, 5>& arr) {
-		// r^2
-		MFLOAT norm = MUL(arr[0], arr[0]);
-		// sum the squares of the others
-		for (int i = 1; i < 5; ++i)
-			norm = FMADD(arr[i], arr[i], norm);
-
-		return SQRT(norm);
-	}
-
 	std::vector<float> _compute_kappa() {
 		std::vector<float> kappas(total_energies.size());
-
-		for (size_t i = 0; i < N; i+=subproblem_size<N>) {
+		size_t N = total_energies.size();
+		for (size_t i = 0; i < N; i+=subproblem_size) {
 			MFLOAT carter_ps = LOAD(&carter_constants[i]);
 			MFLOAT angular_momenta_ps = LOAD(&angular_momenta[i]);
 	
@@ -416,6 +401,8 @@ class kerr_integrator {
 
 		return kappas;
 	}
+
+	// Note S_inv stands from 1 / sigma
 
 	MFLOAT _compute_D(MFLOAT radius) {
 		MFLOAT radius_minus_two_ps = SUB(radius, SET1(2.0f));
@@ -638,7 +625,7 @@ class kerr_integrator {
 
 		std::array<MFLOAT, 5> k6 = { radius_k6_ps, phi_k6_ps, theta_k6_ps, p_r_k6_ps, p_theta_k6_ps };
 
-		// compute the difference as a vector and compute the L2 norm - this will be our error
+		// compute the difference of as a vector and compute the L2 norm - this will be our error
 		auto diff = [&k1, &k3, &k4, &k5, &k6](size_t i) {
 			//sum_i = 1_to_6(c_hat(i) - c(i)) * k_i
 			return FMADD(k6[i], diff_6_ps, FMADD(k5[i], diff_5_ps, FMADD(k4[i], diff_4_ps, FMADD(k3[i], diff_3_ps, MUL(k1[i],diff_1_ps)))));
@@ -646,23 +633,23 @@ class kerr_integrator {
 
 		std::array<MFLOAT, 5> diff_k = create_array<MFLOAT, 5>(diff);
 
-		MFLOAT error_ps = _compute_L2_norm(diff_k);
+		MFLOAT error_ps = _compute_L2_norm<5>(diff_k);
 		
 		// compare with tolerance
 		MFLOAT above_error_mask = CMP(error_ps, tolerance_ps, _CMP_GT_OQ);
 
-		// new step size
+		// new step size:
 		// new_step = 0.9 * previous_step * fourth_root(tolerance / error)
 		MFLOAT tolerance_over_error_ps = MUL(tolerance_ps, RCP(error_ps));
 		MFLOAT fourth_root_ps = SQRT(SQRT(tolerance_over_error_ps));
 		step_ps = MUL(MUL(zero_point_nine_ps, step_ps), fourth_root_ps);
 
 		// clamp step_ps
-		step_ps = _mm256_min_ps(step_ps, SET1(5.0f));
-		step_ps = _mm256_max_ps(step_ps, SET1(0.000001f));
+		step_ps = MIN(step_ps, SET1(5.0f));
+		step_ps = MAX(step_ps, SET1(0.000001f));
 
 		// should we recompute
-		bool recompute = !_mm256_testz_ps(above_error_mask, above_error_mask);
+		bool recompute = !TESTZ(above_error_mask, above_error_mask);
 
 		if (recompute) {
 			auto [_radius_ps, _p_r_ps, _theta_ps, _p_theta_ps, _phi_ps] = _next_step_geodesic(idx);
@@ -696,11 +683,20 @@ public:
 		, phis(std::move(_initial_data.initial_phis))
 		, thetas(std::move(_initial_data.initial_thetas))
 		, p_r(std::move(_initial_data.initial_p_r))
-		, p_theta(std::move(_initial_data.initial_p_theta)) {}
+		, p_theta(std::move(_initial_data.initial_p_theta)) {
 
+		size_t N = radii.size();
+		assert(angular_momenta.size() == N, "Angular momenta must have the same size as radii");
+		assert(phis.size() == N, "Phi values must have the same size as radii");
+		assert(carter_constants.size() == N, "Carter constants must have the same size as radii");
+		assert(total_energies.size() == N, "Total energies must have the same size as radii");
+		assert(thetas.size() == N, "Theta values must have the same size as radii");
+		assert(p_r.size() == N, "Radial momenta must have the same size as radii");
+		assert(p_theta.size() == N, "Momenta along the theta direction must have the same size as radii");
+		assert(a >= 0.0f && a <= 1.0f, "Constant a must be between 0 and 1");
+	}
 
 	geodesic_data next_geodesic(size_t idx) {
-		// calc step here 
 		auto [r, pr, th, p_th, phi] = _next_step_geodesic(idx);
 
 		STORE(&radii[idx], r);
@@ -713,9 +709,9 @@ public:
 	}
 
 	void send_data() {
-		//print_radii();
 		message_kerr data(radii.size());
-		for (size_t i = 0; i < N; i += subproblem_size<N>) {
+		size_t N = radii.size();
+		for (size_t i = 0; i < N; i += subproblem_size) {
 			auto [r, p_r, th, p_th, phi] = next_geodesic(i);
 			data.convert_and_add(r, phi, th, spin_constant, i);
 		}
@@ -725,7 +721,8 @@ public:
 
 	void send_initial_data() {
 		message_kerr data(radii.size());
-		for (size_t i = 0; i < N; i += subproblem_size<N>) {
+		size_t N = radii.size();
+		for (size_t i = 0; i < N; i += subproblem_size) {
 			auto r = LOAD(&radii[i]);
 			auto th = LOAD(&thetas[i]);
 			auto phi = LOAD(&phis[i]);
@@ -743,11 +740,10 @@ public:
 
 	void print_radii() {
 		std::cout << "Radii: ";
-
+		size_t N = radii.size();
 		for (int i = 0; i < N; ++i)
 			std::cout << radii[i] << " ";
 
-		//std::cout << radii[0] << " " << thetas[0] << " " << p_theta[0];
 		std::cout << std::endl;
 	}
 

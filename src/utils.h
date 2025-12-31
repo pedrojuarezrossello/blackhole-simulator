@@ -4,17 +4,16 @@
 #include <type_traits>
 #include <fstream>
 
- namespace impl {
+
 template <typename T, typename F, std::size_t... Is, typename ... Args>
 constexpr std::array<std::decay_t<T>, sizeof...(Is)>
-create_array(std::index_sequence<Is...>, F&& fn, Args&&... args) {
+impl_create_array(std::index_sequence<Is...>, F && fn, Args &&... args) {
 	return { { (static_cast<void>(Is), std::forward<F>(fn)(Is, std::forward<Args>(args)...))... } };
-	}
 }
 
 template <typename T, std::size_t N, typename F, typename... Args>
 constexpr std::array<std::decay_t<T>, N> create_array(F&& fn, Args&&... args) {
-	return impl::create_array<T>(std::make_index_sequence<N>(), std::forward<F>(fn), std::forward<Args>(args)...);
+	return impl_create_array<T>(std::make_index_sequence<N>(), std::forward<F>(fn), std::forward<Args>(args)...);
 }
 
 enum class spacetime {
@@ -33,7 +32,7 @@ struct shared_initial_data {
 		std::ifstream file(file_path.data());
 
 		if (!file.is_open()) 
-			throw std::runtime_error("File open unsuccessfully");
+			throw std::runtime_error("File opened unsuccessfully");
 
 		std::string line;
 		std::string type;
@@ -67,12 +66,15 @@ struct shared_initial_data {
 
 template <spacetime metric>
 struct initial_particle_data : public shared_initial_data {
+	static const spacetime metric_type = metric;
 	initial_particle_data(std::string_view file_path)
 		: shared_initial_data(file_path) { }
 };
 
 template<>
 struct initial_particle_data<spacetime::kerr> : public shared_initial_data {
+	static const spacetime metric_type = spacetime::kerr;
+
 	std::vector<float> initial_thetas;
 	std::vector<float> carter_constants;
 	std::vector<float> energies;
@@ -83,7 +85,7 @@ struct initial_particle_data<spacetime::kerr> : public shared_initial_data {
 		std::ifstream file(file_path.data());
 
 		if (!file.is_open())
-			throw std::runtime_error("File open unsuccessfully");
+			throw std::runtime_error("File opened unsuccessfully");
 
 		std::string line;
 		std::string type;
@@ -124,7 +126,13 @@ struct initial_particle_data<spacetime::kerr> : public shared_initial_data {
 	}
 };
 
-constexpr size_t N = 8;
+template <spacetime T>
+float get_default(const initial_particle_data<T>& data) {
+	if (spacetime::kerr == std::decay_t<decltype(data)>::metric_type)
+		return 0.3f;
+	else
+		return 1.0f;
+}
 
 // MSCV does not define __FMA__ when AVX2 is enabled
 #if defined(__AVX2__) && defined(_MSC_VER)
@@ -132,8 +140,7 @@ constexpr size_t N = 8;
 #endif
 
 #ifdef __AVX512F__
-	template <size_t N>
-	constexpr size_t subproblem_size = N <= 16 ? N : 16;
+	constexpr size_t subproblem_size = 16;
 
 	#define ALIGN alignas(64)
 	#define MFLOAT __m512
@@ -159,11 +166,25 @@ constexpr size_t N = 8;
 	#define CMP(x, y, z) _mm512_cmp_ps_mask(x, y, z)
 	#define MASKZ_MOV_EPI32(mask, x) _mm512_maskz_mov_epi32(mask, x)
 	#define MASK_MUL(mask, x, y, z) _mm512_mask_mul_ps(x, mask, y, z)
-	// define MASK_ADD
+	#define MASK_ADD(mas, x, y, z) _mm512_mask_add_ps(x, mask, y, z)
 	#define ANDNOT(x, y) _mm512_andnot_ps(x, y)
+	#define MAX(x, y) _mm512_max_ps(x, y)
+	#define MIN(x, y) _mm512_min_ps(x, y)
+	#define TESTZ(x, y) _ktestz_mask8_u8(x, y)
+
+	template <typename T>
+	void print_simd(T var) {
+		using type = std::conditional_t<std::is_same_v<T, MFLOAT>, float, int>;
+		type val[16];
+		memcpy(val, &var, sizeof(val));
+		printf("(%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f)\n",
+			val[0], val[1], val[2], val[3], val[4], val[5],
+			val[6], val[7], val[8], val[9], val[10], val[11],
+			val[12], val[13], val[14], val[15]);
+	}
+
 #elif defined(__AVX2__)
-	template <size_t N>
-	constexpr size_t subproblem_size = N <= 8 ? N : 8;
+	constexpr size_t subproblem_size = 8;
 
 	#define ALIGN alignas(32)
 	#define MFLOAT __m256
@@ -197,14 +218,30 @@ constexpr size_t N = 8;
 	#define MASK_ADD(mask, x, y, z) _mm256_blendv_ps(x, ADD(y, z), mask)
 	#define ANDNOT(x, y) _mm256_andnot_ps(x, y)
 	#define MASK_MOVE(x, y, mask) _mm256_blendv_ps(x, y, mask)
-#endif
+	#define MAX(x, y) _mm256_max_ps(x, y)
+	#define MIN(x, y) _mm256_min_ps(x, y)
+	#define TESTZ(x, y) _mm256_testz_ps(x, y)
 
-template<typename T>
-void print_ymm(T var) {
-	using type = std::conditional_t<std::is_same_v<T,MFLOAT>, float, int>;
-	type val[8];
-	memcpy(val, &var, sizeof(val));
-	printf("(%f, %f, %f, %f, %f, %f, %f, %f)\n",
+	template <typename T>
+	void print_simd(T var) {
+		using type = std::conditional_t<std::is_same_v<T, MFLOAT>, float, int>;
+		type val[8];
+		memcpy(val, &var, sizeof(val));
+		printf("(%f, %f, %f, %f, %f, %f, %f, %f)\n",
 			val[0], val[1], val[2], val[3], val[4], val[5],
 			val[6], val[7]);
+	}
+
+#endif
+
+template<size_t N>
+MFLOAT _compute_L2_norm(const std::array<MFLOAT, N> & arr) {
+	// first
+	MFLOAT norm = MUL(arr[0], arr[0]);
+	// sum the squares of the others
+	for (int i = 1; i < N; ++i)
+		norm = FMADD(arr[i], arr[i], norm);
+
+	return SQRT(norm);
 }
+

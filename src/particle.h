@@ -18,7 +18,6 @@ struct particle {
 struct particle_set : public ofNode {
 	void customDraw() { std::ranges::for_each(particles, &particle::draw); }
 
-	// objects
 	std::vector<particle> particles;
 };
 
