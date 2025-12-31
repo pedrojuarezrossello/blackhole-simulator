@@ -295,7 +295,7 @@ class schwarzschild_integrator {
 *	If T>E, we redo the same calculation with h_new as our step size. Else we move on.
 */
 
-const MFLOAT tolerance_ps = SET1(0.01f);
+const MFLOAT tolerance_ps = SET1(0.05f);
 
 const MFLOAT minus_two_ps = SET1(-2.0f);
 const MFLOAT one_ps = SET1(1.0f);
@@ -362,6 +362,9 @@ class kerr_integrator {
 	// a
 	MFLOAT spin_constant;
 
+	// event horizon
+	MFLOAT event_horizon;
+
 	// step
 	MFLOAT step_ps;
 
@@ -380,6 +383,13 @@ class kerr_integrator {
 	ALIGN std::vector<float> p_r;
 	ALIGN std::vector<float> p_theta;
 
+	float get256_avx2(__m256 a, int idx) {
+		__m128i vidx = _mm_cvtsi32_si128(idx); // vmovd
+		__m256i vidx256 = _mm256_castsi128_si256(vidx); // no instructions
+		__m256 shuffled = _mm256_permutevar8x32_ps(a, vidx256); // vpermps
+		return _mm256_cvtss_f32(shuffled);
+	}
+
 	std::vector<float> _compute_kappa() {
 		std::vector<float> kappas(total_energies.size());
 		size_t N = total_energies.size();
@@ -396,7 +406,8 @@ class kerr_integrator {
 
 			// k = [Q + L^2] + [a^2(E^2-1)] 
 			MFLOAT res_ps = FMADD(spin_squared_ps, total_energies_squared_minus_one_ps, q_l_squared_sum_ps);
-			STREAM(&kappas[i], res_ps);
+			
+			STORE(&kappas[i], res_ps);
 		}
 
 		return kappas;
@@ -508,7 +519,6 @@ class kerr_integrator {
 		
 	}
 
-	// TODO - DO SOMETHING IF WITHIN TOLERANCE OF THE OUTER EVENT HORIZON??? - maybe set step to zero if we get too close.
 	geodesic_data _next_step_geodesic(size_t idx) {
 		// Load data from last step (y_n in the RK4 notation)
 		MFLOAT radius_ps = LOAD(&radii[idx]);
@@ -633,8 +643,18 @@ class kerr_integrator {
 
 		std::array<MFLOAT, 5> diff_k = create_array<MFLOAT, 5>(diff);
 
+		if (get256_avx2(radius_ps, 7) < 1.97f)
+			std::cout << "STOP";
+
 		MFLOAT error_ps = _compute_L2_norm<5>(diff_k);
-		
+
+		// compare radius with event horizon with a mask - it's given by 1+sqrt(1-a^2)
+		MFLOAT event_horizon_radius_dist_ps = _compute_L2_norm<1>(std::array<MFLOAT, 1> { SUB(radius_ps, event_horizon) });
+		MFLOAT event_horizon_mask = CMP(event_horizon_radius_dist_ps, tolerance_ps, _CMP_LT_OQ);
+
+		// blend error_ps with tolerance_ps based on that mask
+		error_ps = BLEND(error_ps, tolerance_ps, event_horizon_mask);
+
 		// compare with tolerance
 		MFLOAT above_error_mask = CMP(error_ps, tolerance_ps, _CMP_GT_OQ);
 
@@ -645,8 +665,11 @@ class kerr_integrator {
 		step_ps = MUL(MUL(zero_point_nine_ps, step_ps), fourth_root_ps);
 
 		// clamp step_ps
-		step_ps = MIN(step_ps, SET1(5.0f));
-		step_ps = MAX(step_ps, SET1(0.000001f));
+		step_ps = MIN(step_ps, SET1(1.5f));
+		step_ps = MAX(step_ps, SET1(0.0001f));
+
+		// set step_ps to zero for those
+		step_ps = BLEND(step_ps, SETZERO, event_horizon_mask);
 
 		// should we recompute
 		bool recompute = !TESTZ(above_error_mask, above_error_mask);
@@ -674,6 +697,7 @@ public:
 	kerr_integrator(float									  a,
 					initial_particle_data<spacetime::kerr> _initial_data)
 		: spin_constant(SET1(a))
+		, event_horizon(SET1(1.0f+std::sqrtf(1.0f-a*a)))
 		, step_ps(SET1(1.0f))
 		, angular_momenta(std::move(_initial_data.angular_momenta))
 		, carter_constants(std::move(_initial_data.carter_constants))

@@ -8,12 +8,12 @@
 struct message_schwarzschild;
 struct message_kerr;
 
-// Must be changed when changing the spacetime... kinda hate this I'm tempted to type erase it via dynamic polymorphism
+// Must be changed when changing the spacetime
 extern message_queue<message_kerr> data_queue;
 
 enum particle_state  {
 	in_orbit,
-	schwarzschild_radius
+	event_horizon
 };
 
 struct message_schwarzschild {
@@ -63,7 +63,7 @@ struct message_schwarzschild {
 
 		// The mask is set for the lanes which have fallen past the Schwarzschild radius (status 1)
 		// For the others, the status is 0 hence the zero-mask move
-		MINT schwarzschild_radius_epi32 = SET1_EPI32(static_cast<int>(particle_state::schwarzschild_radius));
+		MINT schwarzschild_radius_epi32 = SET1_EPI32(static_cast<int>(particle_state::event_horizon));
 #ifdef __AVX2__
 		MINT part_states_epi32 = MASKZ_MOV_EPI32(_mm256_cvtps_epi32(mask), schwarzschild_radius_epi32);
 #else

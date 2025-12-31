@@ -171,6 +171,7 @@ float get_default(const initial_particle_data<T>& data) {
 	#define MAX(x, y) _mm512_max_ps(x, y)
 	#define MIN(x, y) _mm512_min_ps(x, y)
 	#define TESTZ(x, y) _ktestz_mask8_u8(x, y)
+	#define BLEND(x, y, mask) _mm512_mask_blend_ps(mask, x, y)
 
 	template <typename T>
 	void print_simd(T var) {
@@ -221,6 +222,7 @@ float get_default(const initial_particle_data<T>& data) {
 	#define MAX(x, y) _mm256_max_ps(x, y)
 	#define MIN(x, y) _mm256_min_ps(x, y)
 	#define TESTZ(x, y) _mm256_testz_ps(x, y)
+	#define BLEND(x, y, mask) _mm256_blendv_ps(x, y, mask)
 
 	template <typename T>
 	void print_simd(T var) {

@@ -8,8 +8,8 @@
 
 message_queue<message_kerr> data_queue;
 
-// todo - fix horrible messaging
 // todo - extend to non multiples of 8
+// todo - handle event horizon
 
 int main(int argc, char * argv[]) {
 	// Set up integrator
