@@ -6,14 +6,11 @@
 #include "message_queue.h"
 #include <thread>
 
-message_queue<message_kerr> data_queue;
-
-// todo - extend to non multiples of 8
-// todo - handle event horizon
+message_queue<message> data_queue;
 
 int main(int argc, char * argv[]) {
 	// Set up integrator
-	initial_particle_data<spacetime::kerr> particle_data("C:\\Users\\Pedro\\Downloads\\of_v0.12.1_vs_64_release\\apps\\myApps\\schwarzschild_black_hole\\src\\data.txt");
+	initial_particle_data<kerr> particle_data("data.txt");
 
 	const float spin = argc > 1 ? atof(argv[1]) : get_default(particle_data);
 	kerr_integrator solver(spin, particle_data);

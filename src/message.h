@@ -5,26 +5,24 @@
 #include "message_queue.h"
 
 // Forward declaration
-struct message_schwarzschild;
-struct message_kerr;
+struct message;
 
-// Must be changed when changing the spacetime
-extern message_queue<message_kerr> data_queue;
+extern message_queue<message> data_queue;
 
 enum particle_state  {
 	in_orbit,
 	event_horizon
 };
 
-struct message_schwarzschild {
+struct message {
 	ALIGN std::vector<float> xs;
 	ALIGN std::vector<float> ys;
 	ALIGN std::vector<float> zs;
 	ALIGN std::vector<particle_state> states;
 
-	message_schwarzschild() = default;
+	message() = default;
 
-	message_schwarzschild(size_t size)
+	message(size_t size)
 		: xs(std::vector<float>(size))
 		, ys(std::vector<float>(size))
 		, zs(std::vector<float>(size))
@@ -42,7 +40,7 @@ struct message_schwarzschild {
 		std::cout << std::endl;
 	}
 
-	void convert_and_add(MFLOAT radii_ps, MFLOAT phis_ps, MFLOAT thetas_ps, MFLOAT bm_ps, size_t idx) {
+	void convert_and_add(MFLOAT radii_ps, MFLOAT phis_ps, MFLOAT thetas_ps, MFLOAT bm_ps, size_t idx, schwarzschild _) {
 		MFLOAT cos_phis_ps = COS(phis_ps);
 		MFLOAT sin_phis_ps = SIN(phis_ps);
 		MFLOAT cos_thetas_ps = COS(thetas_ps);
@@ -63,46 +61,17 @@ struct message_schwarzschild {
 
 		// The mask is set for the lanes which have fallen past the Schwarzschild radius (status 1)
 		// For the others, the status is 0 hence the zero-mask move
-		MINT schwarzschild_radius_epi32 = SET1_EPI32(static_cast<int>(particle_state::event_horizon));
+		MFLOAT event_horizon_ps = SET1(1.0f);
 #ifdef __AVX2__
-		MINT part_states_epi32 = MASKZ_MOV_EPI32(_mm256_cvtps_epi32(mask), schwarzschild_radius_epi32);
+		MFLOAT part_states_ps = _mm256_blendv_ps(SETZERO, event_horizon_ps, mask);
+		MINT part_states_epi32 = _mm256_cvtps_epi32(part_states_ps);
 #else
-		MINT part_states_epi32 = MASKZ_MOV_EPI32(mask, schwarzschild_radius_epi32);
+		//MINT part_states_epi32 = MASKZ_MOV_EPI32(mask, schwarzschild_radius_epi32);
 #endif
-		STREAM_EPI32((MINT*) &states[idx], part_states_epi32);
+		//STORE_EPI32((MINT*) &states[idx], part_states_epi32);
 	}
 
-	void send() {
-	//	data_queue.push(*this);
-	}
-};
-
-struct message_kerr {
-	ALIGN std::vector<float> xs;
-	ALIGN std::vector<float> ys;
-	ALIGN std::vector<float> zs;
-
-	message_kerr() = default;
-
-	message_kerr(size_t size)
-		: xs(std::vector<float>(size))
-		, ys(std::vector<float>(size))
-		, zs(std::vector<float>(size)) { }
-
-	void print() {
-		std::cout << "Message start: " << std::endl;
-		for (auto n : xs)
-			std::cout << n << " ";
-
-		std::cout << std::endl;
-		for (auto n : ys)
-			std::cout << n << " ";
-
-		std::cout << std::endl;
-	}
-
-	// TODO fix coordinate transformation
-	void convert_and_add(MFLOAT radii_ps, MFLOAT phis_ps, MFLOAT thetas_ps, MFLOAT a_ps, size_t idx) {
+	void convert_and_add(MFLOAT radii_ps, MFLOAT phis_ps, MFLOAT thetas_ps, MFLOAT a_ps, MFLOAT step_ps, size_t idx, kerr _) {
 		MFLOAT cos_phis_ps = COS(phis_ps);
 		MFLOAT sin_phis_ps = SIN(phis_ps);
 		MFLOAT cos_thetas_ps = COS(thetas_ps);
@@ -110,12 +79,22 @@ struct message_kerr {
 
 		MFLOAT a_squared_ps = MUL(a_ps, a_ps);
 		MFLOAT pseudo_radius_ps = SQRT(FMADD(radii_ps, radii_ps, a_squared_ps));
-		
+
 		MFLOAT xs_ps = MUL(MUL(pseudo_radius_ps, cos_phis_ps), sin_thetas_ps);
 		MFLOAT ys_ps = MUL(MUL(pseudo_radius_ps, sin_phis_ps), sin_thetas_ps);
 		MFLOAT zs_ps = MUL(pseudo_radius_ps, cos_thetas_ps);
 
-		// Won't be immediately used...
+		//If step_ps is zero, then we know that that particle has fallen into the black hole
+		auto mask = CMP(step_ps, SETZERO, _CMP_EQ_OQ);
+		MFLOAT event_horizon_ps = SET1(1.0f);
+#ifdef __AVX2__
+		MFLOAT part_states_ps = _mm256_blendv_ps(SETZERO, event_horizon_ps, mask);
+		MINT part_states_epi32 = _mm256_cvtps_epi32(part_states_ps);
+#else
+		MINT part_states_epi32 = MASKZ_MOV_EPI32(mask, event_horizon_epi32);
+#endif
+		STORE_EPI32((MINT *)&states[idx], part_states_epi32);
+
 		STORE(&xs[idx], xs_ps);
 		STORE(&ys[idx], ys_ps);
 		STORE(&zs[idx], zs_ps);

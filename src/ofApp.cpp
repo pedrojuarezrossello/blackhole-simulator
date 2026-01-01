@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <execution>
 
-extern message_queue<message_kerr> data_queue;
+extern message_queue<message> data_queue;
 
 constexpr float scale_factor = 30.0f;
 
@@ -39,6 +39,7 @@ void ofApp::update() {
 		particles.particles[i].pos.x = message.xs[i] * scale_factor;
 		particles.particles[i].pos.y = message.ys[i] * scale_factor;
 		particles.particles[i].pos.z = message.zs[i] * scale_factor;
+		particles.particles[i].state = message.states[i];
 	}
 }
 

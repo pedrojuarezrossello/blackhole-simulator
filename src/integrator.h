@@ -170,7 +170,7 @@ class schwarzschild_integrator {
 
 	public:
 		schwarzschild_integrator(float                _black_hole_mass,
-			initial_particle_data<spacetime::schwarzschild> _initial_data)
+			initial_particle_data<schwarzschild> _initial_data)
 			: _2black_hole_mass(SET1(-2 * _black_hole_mass))
 			, angular_momenta(std::move(_initial_data.angular_momenta))
 			, radii(std::move(_initial_data.initial_radii))
@@ -216,27 +216,27 @@ class schwarzschild_integrator {
 		}
 
 		void send_data() {
-			message_schwarzschild data(radii.size());
+			message data(radii.size());
 			size_t N = radii.size();
 			for (size_t i = 0; i < N; i += subproblem_size) {
 				MFLOAT radii_chunk = next_radius(step, i);
 				_update_directions(&radii_chunk, i);
 				MFLOAT phis_chunk = next_phi(step, i);
 				MFLOAT thetas_chunk = SET1(3.141592f / 2.0f); 
-				data.convert_and_add(radii_chunk, phis_chunk, thetas_chunk, _2black_hole_mass, i);
+				data.convert_and_add(radii_chunk, phis_chunk, thetas_chunk, _2black_hole_mass, i, schwarzschild{});
 			}
 
 			data.send();
 		}
 
 		void send_initial_data() {
-			message_schwarzschild data(radii.size());
+			message data(radii.size());
 			size_t N = radii.size();
 			for (size_t i = 0; i < N; i += subproblem_size) {
 				MFLOAT radii_chunk = LOAD(&radii[i]);
 				MFLOAT phis_chunk = LOAD(&phis[i]);
 				MFLOAT thetas_chunk = SET1(3.141592f / 2.0f); 
-				data.convert_and_add(radii_chunk, phis_chunk, thetas_chunk, _2black_hole_mass, i);
+				data.convert_and_add(radii_chunk, phis_chunk, thetas_chunk, _2black_hole_mass, i, schwarzschild{});
 			}
 			
 			data.send();
@@ -643,9 +643,6 @@ class kerr_integrator {
 
 		std::array<MFLOAT, 5> diff_k = create_array<MFLOAT, 5>(diff);
 
-		if (get256_avx2(radius_ps, 7) < 1.97f)
-			std::cout << "STOP";
-
 		MFLOAT error_ps = _compute_L2_norm<5>(diff_k);
 
 		// compare radius with event horizon with a mask - it's given by 1+sqrt(1-a^2)
@@ -695,7 +692,7 @@ class kerr_integrator {
 public:
 
 	kerr_integrator(float									  a,
-					initial_particle_data<spacetime::kerr> _initial_data)
+					initial_particle_data<kerr> _initial_data)
 		: spin_constant(SET1(a))
 		, event_horizon(SET1(1.0f+std::sqrtf(1.0f-a*a)))
 		, step_ps(SET1(1.0f))
@@ -733,24 +730,24 @@ public:
 	}
 
 	void send_data() {
-		message_kerr data(radii.size());
+		message data(radii.size());
 		size_t N = radii.size();
 		for (size_t i = 0; i < N; i += subproblem_size) {
 			auto [r, p_r, th, p_th, phi] = next_geodesic(i);
-			data.convert_and_add(r, phi, th, spin_constant, i);
+			data.convert_and_add(r, phi, th, spin_constant, step_ps, i, kerr{});
 		}
 
 		data.send();
 	}
 
 	void send_initial_data() {
-		message_kerr data(radii.size());
+		message data(radii.size());
 		size_t N = radii.size();
 		for (size_t i = 0; i < N; i += subproblem_size) {
 			auto r = LOAD(&radii[i]);
 			auto th = LOAD(&thetas[i]);
 			auto phi = LOAD(&phis[i]);
-			data.convert_and_add(r, phi, th, spin_constant, i);
+			data.convert_and_add(r, phi, th, spin_constant, step_ps, i, kerr{});
 		}
 
 		data.send();

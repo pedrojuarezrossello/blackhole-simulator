@@ -16,10 +16,8 @@ constexpr std::array<std::decay_t<T>, N> create_array(F&& fn, Args&&... args) {
 	return impl_create_array<T>(std::make_index_sequence<N>(), std::forward<F>(fn), std::forward<Args>(args)...);
 }
 
-enum class spacetime {
-	schwarzschild,
-	kerr
-};
+struct schwarzschild {};
+struct kerr {};
 
 struct shared_initial_data {
 	std::vector<float> initial_radii;
@@ -64,17 +62,14 @@ struct shared_initial_data {
 	}
 };
 
-template <spacetime metric>
+template <typename metric>
 struct initial_particle_data : public shared_initial_data {
-	static const spacetime metric_type = metric;
 	initial_particle_data(std::string_view file_path)
 		: shared_initial_data(file_path) { }
 };
 
 template<>
-struct initial_particle_data<spacetime::kerr> : public shared_initial_data {
-	static const spacetime metric_type = spacetime::kerr;
-
+struct initial_particle_data<kerr> : public shared_initial_data {
 	std::vector<float> initial_thetas;
 	std::vector<float> carter_constants;
 	std::vector<float> energies;
@@ -126,9 +121,9 @@ struct initial_particle_data<spacetime::kerr> : public shared_initial_data {
 	}
 };
 
-template <spacetime T>
+template <typename T>
 float get_default(const initial_particle_data<T>& data) {
-	if (spacetime::kerr == std::decay_t<decltype(data)>::metric_type)
+	if constexpr (std::is_same_v<kerr, T>)
 		return 0.3f;
 	else
 		return 1.0f;
@@ -147,7 +142,7 @@ float get_default(const initial_particle_data<T>& data) {
 	#define MINT __m512i
 	#define LOAD(x) _mm512_load_ps(x)
 	#define STORE(x,y) _mm512_store_ps(x,y)
-	#define STREAM_EPI32(x, y) _mm512_stream_si512(x, y)
+	#define STORE_EPI32(x, y) _mm512_store_si512(x, y)
 	#define STREAM(x,y) _mm512_stream_ps(x, y)
 	#define SET1(x) _mm512_set1_ps(x)
 	#define SET1_EPI32(x) _mm512_set1_epi32(x)
@@ -192,7 +187,7 @@ float get_default(const initial_particle_data<T>& data) {
 	#define MINT __m256i
 	#define LOAD(x) _mm256_load_ps(x)
 	#define STORE(x, y) _mm256_store_ps(x, y)
-	#define STREAM_EPI32(x, y) _mm256_stream_si256(x, y)
+	#define STORE_EPI32(x, y) _mm256_store_si256(x, y)
 	#define STREAM(x, y) _mm256_stream_ps(x, y)
 	#define SET1(x) _mm256_set1_ps(x)
 	#define SET1_EPI32(x) _mm256_set1_epi32(x)
@@ -214,7 +209,7 @@ float get_default(const initial_particle_data<T>& data) {
 	#define SETZERO _mm256_setzero_ps()
 	#define SETZERO_EPI32 _mm256_setzero_si256()
 	#define CMP(x, y, z) _mm256_cmp_ps(x, y, z)
-	#define MASKZ_MOV_EPI32(mask, x) _mm256_blendv_epi8(SETZERO_EPI32, x, mask)
+	#define MASKZ_MOV_EPI32(mask, x) _mm256_blend_epi32(SETZERO_EPI32, x, mask)
 	#define MASK_MUL(mask, x, y, z) _mm256_blendv_ps(x, MUL(y, z), mask)
 	#define MASK_ADD(mask, x, y, z) _mm256_blendv_ps(x, ADD(y, z), mask)
 	#define ANDNOT(x, y) _mm256_andnot_ps(x, y)
@@ -247,3 +242,9 @@ MFLOAT _compute_L2_norm(const std::array<MFLOAT, N> & arr) {
 	return SQRT(norm);
 }
 
+float get256_avx2(__m256 a, int idx) {
+	__m128i vidx = _mm_cvtsi32_si128(idx); // vmovd
+	__m256i vidx256 = _mm256_castsi128_si256(vidx); // no instructions
+	__m256 shuffled = _mm256_permutevar8x32_ps(a, vidx256); // vpermps
+	return _mm256_cvtss_f32(shuffled);
+}
