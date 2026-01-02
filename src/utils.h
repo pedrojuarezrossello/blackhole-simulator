@@ -129,6 +129,11 @@ float get_default(const initial_particle_data<T>& data) {
 		return 1.0f;
 }
 
+template <typename T>
+struct correct_size {
+	static constexpr bool value = sizeof(T) == 32;
+};
+
 // MSCV does not define __FMA__ when AVX2 is enabled
 #if defined(__AVX2__) && defined(_MSC_VER)
 	#define __FMA__ 1
@@ -169,6 +174,7 @@ float get_default(const initial_particle_data<T>& data) {
 	#define BLEND(x, y, mask) _mm512_mask_blend_ps(mask, x, y)
 
 	template <typename T>
+	requires correct_size<T>::value
 	void print_simd(T var) {
 		using type = std::conditional_t<std::is_same_v<T, MFLOAT>, float, int>;
 		type val[16];
@@ -220,6 +226,7 @@ float get_default(const initial_particle_data<T>& data) {
 	#define BLEND(x, y, mask) _mm256_blendv_ps(x, y, mask)
 
 	template <typename T>
+	requires correct_size<T>::value
 	void print_simd(T var) {
 		using type = std::conditional_t<std::is_same_v<T, MFLOAT>, float, int>;
 		type val[8];
@@ -240,11 +247,4 @@ MFLOAT _compute_L2_norm(const std::array<MFLOAT, N> & arr) {
 		norm = FMADD(arr[i], arr[i], norm);
 
 	return SQRT(norm);
-}
-
-float get256_avx2(__m256 a, int idx) {
-	__m128i vidx = _mm_cvtsi32_si128(idx); // vmovd
-	__m256i vidx256 = _mm256_castsi128_si256(vidx); // no instructions
-	__m256 shuffled = _mm256_permutevar8x32_ps(a, vidx256); // vpermps
-	return _mm256_cvtss_f32(shuffled);
 }

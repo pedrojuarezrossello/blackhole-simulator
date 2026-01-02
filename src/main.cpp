@@ -10,7 +10,7 @@ message_queue<message> data_queue;
 
 int main(int argc, char * argv[]) {
 	// Set up integrator
-	initial_particle_data<schwarzschild> particle_data("data.txt");
+	initial_particle_data<schwarzschild> particle_data("C:\\Users\\Pedro\\Downloads\\of_v0.12.1_vs_64_release\\apps\\myApps\\schwarzschild_black_hole\\src\\data.txt");
 
 	const float spin = argc > 1 ? atof(argv[1]) : get_default(particle_data);
 	schwarzschild_integrator solver(spin, particle_data);

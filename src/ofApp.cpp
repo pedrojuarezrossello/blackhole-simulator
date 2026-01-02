@@ -3,9 +3,6 @@
 #include "message.h"
 #include "particle.h"
 #include "message_queue.h"
-#include <ranges>
-#include <algorithm>
-#include <execution>
 
 extern message_queue<message> data_queue;
 

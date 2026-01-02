@@ -65,9 +65,9 @@ struct message {
 		MFLOAT part_states_ps = _mm256_blendv_ps(SETZERO, event_horizon_ps, mask);
 		MINT part_states_epi32 = _mm256_cvtps_epi32(part_states_ps);
 #else
-		//MINT part_states_epi32 = MASKZ_MOV_EPI32(mask, schwarzschild_radius_epi32);
+		MINT part_states_epi32 = MASKZ_MOV_EPI32(mask, schwarzschild_radius_epi32);
 #endif
-		//STORE_EPI32((MINT*) &states[idx], part_states_epi32);
+		STORE_EPI32((MINT*) &states[idx], part_states_epi32);
 	}
 
 	void convert_and_add(MFLOAT radii_ps, MFLOAT phis_ps, MFLOAT thetas_ps, MFLOAT a_ps, MFLOAT step_ps, size_t idx, kerr _) {

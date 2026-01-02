@@ -64,7 +64,6 @@ class schwarzschild_integrator {
 	ALIGN std::vector<float> total_energies;
 	ALIGN std::vector<float> directions;
 
-	// energy also squared???
 	void _update_directions(MFLOAT * new_radii_ps, size_t idx) {
 		// Work out for which lanes E^2-V^2 <= 0
 		MFLOAT energy_ps = LOAD(&total_energies[idx]);
@@ -259,14 +258,6 @@ class schwarzschild_integrator {
 			return next_phi_ps;
 		}
 
-		void print_radii() {
-			size_t N = radii.size();
-			std::cout << "Radii: ";
-			for (size_t i = 0; i < N; ++i)
-				std::cout << radii[i] << " ";
-			std::cout << std::endl;
-		}
-
 		void send_data() {
 			message data(radii.size());
 			size_t N = radii.size();
@@ -457,13 +448,6 @@ class kerr_integrator {
 
 	// step
 	ALIGN std::vector<float> step;
-
-	float get256_avx2(__m256 a, int idx) {
-		__m128i vidx = _mm_cvtsi32_si128(idx); // vmovd
-		__m256i vidx256 = _mm256_castsi128_si256(vidx); // no instructions
-		__m256 shuffled = _mm256_permutevar8x32_ps(a, vidx256); // vpermps
-		return _mm256_cvtss_f32(shuffled);
-	}
 
 	std::vector<float> _compute_kappa() {
 		std::vector<float> kappas(total_energies.size());
@@ -1030,14 +1014,4 @@ class kerr_integrator {
 		for (;;)
 			send_data();
 	}
-
-	void print_radii() {
-		std::cout << "Radii: ";
-		size_t N = radii.size();
-		for (int i = 0; i < N; ++i)
-			std::cout << radii[i] << " ";
-
-		std::cout << std::endl;
-	}
-
 };

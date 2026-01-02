@@ -4,6 +4,7 @@
 #include "message.h"
 #include "utils.h"
 #include <vector>
+#include <ranges>
 
 struct particle {
 	particle() = default;
