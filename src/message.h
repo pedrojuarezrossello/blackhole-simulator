@@ -26,7 +26,7 @@ struct message {
 		: xs(std::vector<float>(size))
 		, ys(std::vector<float>(size))
 		, zs(std::vector<float>(size))
-		, states(std::vector<particle_state>(size)) { }
+		, states(std::vector<particle_state>(size)) {}
 
 	void print() {
 		std::cout << "Message start: " << std::endl;
@@ -49,10 +49,9 @@ struct message {
 		MFLOAT ys_ps = MUL(MUL(radii_ps, sin_phis_ps), sin_thetas_ps);
 		MFLOAT zs_ps = MUL(radii_ps, cos_thetas_ps);
 
-		// Won't be immediately used...
-		STREAM(&xs[idx], xs_ps);
-		STREAM(&ys[idx], ys_ps);
-		STREAM(&zs[idx], zs_ps);
+		STORE(&xs[idx], xs_ps);
+		STORE(&ys[idx], ys_ps);
+		STORE(&zs[idx], zs_ps);
 
 		// Determine if the particle has fallen into the schwarzschild
 		// radius and thus will be stay there forever
@@ -98,6 +97,21 @@ struct message {
 		STORE(&xs[idx], xs_ps);
 		STORE(&ys[idx], ys_ps);
 		STORE(&zs[idx], zs_ps);
+	}
+
+	void convert_and_add(float radius, float phi, float theta, float bm, size_t idx, schwarzschild _) {
+		xs[idx] = radius * std::cos(phi) * std::sin(theta);
+		ys[idx] = radius * std::sin(phi) * std::sin(theta);
+		zs[idx] = radius * std::cos(theta);
+		states[idx] = radius > 2.0f * bm ? particle_state::in_orbit : particle_state::event_horizon;
+	}
+
+	void convert_and_add(float radius, float phi, float theta, float a, float step, size_t idx, kerr _) {
+		float factor = std::sqrtf(radius * radius + a * a);
+		xs[idx] = factor * std::cos(phi) * std::sin(theta);
+		ys[idx] = factor * std::sin(phi) * std::sin(theta);
+		zs[idx] = factor * std::cos(theta);
+		states[idx] = step ? particle_state::in_orbit : particle_state::event_horizon;
 	}
 
 	void send() {
