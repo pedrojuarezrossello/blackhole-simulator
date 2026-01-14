@@ -14,17 +14,19 @@ int main(int argc, char * argv[]) {
 
 	const float spin = argc > 1 ? atof(argv[1]) : get_default(particle_data);
 	kerr_integrator solver(spin, particle_data);
-	
+
 	// Set up openFrameworks window
 	ofGLWindowSettings settings;
 	settings.setSize(2400, 1200);
-	settings.windowMode = OF_WINDOW; 
+	settings.windowMode = OF_WINDOW;
 
 	auto window = ofCreateWindow(settings);
-	ofRunApp(window, std::make_shared<ofApp>());
+
+	size_t N = particle_data.initial_radii.size();
+	ofRunApp(window, std::make_shared<ofApp>(N));
 
 	// Let's go
-	 auto integrator_thread = std::jthread([&solver]() {
+	auto integrator_thread = std::jthread([&solver]() {
 		solver.rock_n_roll();
 	});
 	ofRunMainLoop();
