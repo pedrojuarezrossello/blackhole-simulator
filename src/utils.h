@@ -19,6 +19,11 @@ constexpr std::array<std::decay_t<T>, N> create_array(F&& fn, Args&&... args) {
 struct schwarzschild {};
 struct kerr {};
 
+enum particle_state {
+	in_orbit,
+	event_horizon
+};
+
 struct shared_initial_data {
 	std::vector<float> initial_radii;
 	std::vector<float> initial_phis;
@@ -131,7 +136,7 @@ float get_default(const initial_particle_data<T>& data) {
 
 template <typename T>
 struct correct_size {
-	static constexpr bool value = sizeof(T) == 32;
+	static constexpr bool value = sizeof(T) == 4;
 };
 
 // MSCV does not define __FMA__ when AVX2 is enabled
@@ -248,3 +253,56 @@ MFLOAT _compute_L2_norm(const std::array<MFLOAT, N> & arr) {
 
 	return SQRT(norm);
 }
+
+// Constants used for RK45
+
+const MFLOAT minus_two_ps = SET1(-2.0f);
+const MFLOAT one_ps = SET1(1.0f);
+
+// Step size calculation
+const MFLOAT zero_point_nine_ps = SET1(0.9f);
+
+// k2
+const MFLOAT _1_4_ps = SET1(1.0f / 4.0f);
+
+// k3
+const MFLOAT _3_32_ps = SET1(3.0f / 32.0f);
+const MFLOAT _9_32_ps = SET1(9.0f / 32.0f);
+
+// k4
+const MFLOAT _1932_2197_ps = SET1(1932.0f / 2197.0f);
+const MFLOAT _minus_7200_2197_ps = SET1(-7200.0f / 2197.0f);
+const MFLOAT _7296_2197_ps = SET1(7296.0f / 2197.0f);
+
+// k5
+const MFLOAT _439_216_ps = SET1(439.0f / 216.0f);
+const MFLOAT _minus_8_ps = SET1(-8.0f);
+const MFLOAT _3680_513_ps = SET1(3680.0f / 513.0f);
+const MFLOAT _minus_845_4104_ps = SET1(-845.0f / 4104.0f);
+
+// k6
+const MFLOAT _minus_8_27_ps = SET1(-8.0f / 27.0f);
+const MFLOAT two_ps = SET1(2.0f);
+const MFLOAT _minus_3544_2565_ps = SET1(-3544.0f / 2565.0f);
+const MFLOAT _1859_4104_ps = SET1(1858.0f / 4104.0f);
+const MFLOAT _minus_11_40_ps = SET1(-11.0f / 40.0f);
+
+// c order 4
+const MFLOAT _25_216_ps = SET1(25.0f / 216.0f);
+const MFLOAT _1408_2565_ps = SET1(1408.0f / 2565.0f);
+const MFLOAT _2197_4104_ps = SET1(2197.0f / 4104.0f);
+const MFLOAT _minus_1_5_ps = SET1(-1.0f / 5.0f);
+
+// c order 5
+const MFLOAT _16_135_ps = SET1(16.0f / 135.0f);
+const MFLOAT _6656_12825_ps = SET1(6656.0f / 12825.0f);
+const MFLOAT _28561_56430_ps = SET1(28561.0f / 56430.0f);
+const MFLOAT _minus_9_50_ps = SET1(-9.0f / 50.0f);
+const MFLOAT _2_55_ps = SET1(2.0f / 55.0f);
+
+// differences c_hat - c
+const MFLOAT diff_1_ps = SET1(1.0f / 150.0f);
+const MFLOAT diff_3_ps = SET1(3.0f / 100.0f);
+const MFLOAT diff_4_ps = SET1(-48.0f / 225.0f);
+const MFLOAT diff_5_ps = SET1(-1.0f / 20.0f);
+const MFLOAT diff_6_ps = SET1(6.0f / 25.0f);

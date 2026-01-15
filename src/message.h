@@ -4,42 +4,43 @@
 #include "utils.h"
 #include "message_queue.h"
 
+constexpr float scale_factor = 30.0f;
+const MFLOAT scale_factor_ps = SET1(scale_factor);
+
 // Forward declaration
 struct message;
 
 extern message_queue<message> data_queue;
 
-enum particle_state  {
-	in_orbit,
-	event_horizon
-};
-
 struct message {
 	ALIGN std::vector<float> xs;
 	ALIGN std::vector<float> ys;
 	ALIGN std::vector<float> zs;
+	ALIGN std::vector<float> radii;
 	ALIGN std::vector<particle_state> states;
-
+	
 	message() = default;
 
 	message(size_t size)
 		: xs(std::vector<float>(size))
 		, ys(std::vector<float>(size))
 		, zs(std::vector<float>(size))
-		, states(std::vector<particle_state>(size)) {}
+		, radii(std::vector<float>(size))
+		, states(std::vector<particle_state>(size)) { }
 
 	void print() {
 		std::cout << "Message start: " << std::endl;
-		for (auto n : xs)
+		for (auto n : radii)
 			std::cout << n << " ";
 
-		std::cout << std::endl;
+		/* std::cout << std::endl;
 		for (auto n : ys)
 			std::cout << n << " ";
 
-		std::cout << std::endl;
+		std::cout << std::endl;*/
 	}
 
+	
 	void convert_and_add(MFLOAT radii_ps, MFLOAT phis_ps, MFLOAT thetas_ps, MFLOAT bm_ps, size_t idx, schwarzschild _) {
 		MFLOAT cos_phis_ps = COS(phis_ps);
 		MFLOAT sin_phis_ps = SIN(phis_ps);
@@ -52,6 +53,7 @@ struct message {
 		STORE(&xs[idx], xs_ps);
 		STORE(&ys[idx], ys_ps);
 		STORE(&zs[idx], zs_ps);
+		STORE(&radii[idx], radii_ps);
 
 		// Determine if the particle has fallen into the schwarzschild
 		// radius and thus will be stay there forever
@@ -67,7 +69,7 @@ struct message {
 #else
 		MINT part_states_epi32 = MASKZ_MOV_EPI32(mask, schwarzschild_radius_epi32);
 #endif
-		STORE_EPI32((MINT*) &states[idx], part_states_epi32);
+		STORE_EPI32((MINT *)&states[idx], part_states_epi32);
 	}
 
 	void convert_and_add(MFLOAT radii_ps, MFLOAT phis_ps, MFLOAT thetas_ps, MFLOAT a_ps, MFLOAT step_ps, size_t idx, kerr _) {
@@ -97,12 +99,14 @@ struct message {
 		STORE(&xs[idx], xs_ps);
 		STORE(&ys[idx], ys_ps);
 		STORE(&zs[idx], zs_ps);
+		STORE(&radii[idx], radii_ps);
 	}
 
 	void convert_and_add(float radius, float phi, float theta, float bm, size_t idx, schwarzschild _) {
 		xs[idx] = radius * std::cos(phi) * std::sin(theta);
 		ys[idx] = radius * std::sin(phi) * std::sin(theta);
 		zs[idx] = radius * std::cos(theta);
+		radii[idx] = radius;
 		states[idx] = radius > 2.0f * bm ? particle_state::in_orbit : particle_state::event_horizon;
 	}
 
@@ -111,10 +115,11 @@ struct message {
 		xs[idx] = factor * std::cos(phi) * std::sin(theta);
 		ys[idx] = factor * std::sin(phi) * std::sin(theta);
 		zs[idx] = factor * std::cos(theta);
+		radii[idx] = radius;
 		states[idx] = step ? particle_state::in_orbit : particle_state::event_horizon;
 	}
 
 	void send() {
-		data_queue.push(*this);
+		data_queue.push(std::move(*this));
 	}
 };

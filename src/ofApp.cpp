@@ -6,10 +6,9 @@
 
 extern message_queue<message> data_queue;
 
-constexpr float scale_factor = 30.0f;
-
 void ofApp::setup() {
 	ofSetVerticalSync(true);
+	//ofSetFrameRate(2000);
 	ofEnableDepthTest();
 	ofSetCircleResolution(64);
 	ofBackground(0, 0, 0);
@@ -20,24 +19,18 @@ void ofApp::setup() {
 	black_hole_material.setDiffuseColor(ofColor::orangeRed);
 	black_hole_material.setShininess(128);
 	camera.tiltDeg(60);
-
 }
 
 void ofApp::update() {
 	// Wait for an update from queue
 	auto message = data_queue.pop();
-	
-	if (particles.particles.size() < message.xs.size()) [[unlikely]] 
-		particles.particles = std::vector<particle>(message.xs.size());
 
-	// Update each particle data
-	size_t N = message.xs.size();
-	 for (size_t i = 0; i < N; ++i) {
-		particles.particles[i].pos.x = message.xs[i] * scale_factor;
-		particles.particles[i].pos.y = message.ys[i] * scale_factor;
-		particles.particles[i].pos.z = message.zs[i] * scale_factor;
-		particles.particles[i].state = message.states[i];
-	}
+	// Update particle data
+	particles.x = std::move(message.xs);
+	particles.y = std::move(message.ys);
+	particles.z = std::move(message.zs);
+	particles.rad = std::move(message.radii);
+	particles.states = std::move(message.states);
 }
 
 void ofApp::draw(){
