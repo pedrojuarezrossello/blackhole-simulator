@@ -30,6 +30,7 @@ void ofApp::update() {
 	particles.y = std::move(message.ys);
 	particles.z = std::move(message.zs);
 	particles.rad = std::move(message.radii);
+	particles.states = std::move(message.states);
 }
 
 void ofApp::draw(){

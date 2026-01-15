@@ -12,8 +12,8 @@ int main(int argc, char * argv[]) {
 	// Set up integrator
 	initial_particle_data<kerr> particle_data("C:\\Users\\Pedro\\Downloads\\of_v0.12.1_vs_64_release\\apps\\myApps\\schwarzschild_black_hole\\src\\data.txt");
 
-	const float spin = argc > 1 ? atof(argv[1]) : get_default(particle_data);
-	kerr_integrator solver(spin, particle_data);
+	const float param = argc > 1 ? atof(argv[1]) : get_default(particle_data);
+	kerr_integrator solver(param, particle_data);
 
 	// Set up openFrameworks window
 	ofGLWindowSettings settings;
@@ -23,7 +23,10 @@ int main(int argc, char * argv[]) {
 	auto window = ofCreateWindow(settings);
 
 	size_t N = particle_data.initial_radii.size();
-	ofRunApp(window, std::make_shared<ofApp>(N));
+
+	using spacetime = std::conditional_t<std::is_same_v<decltype(particle_data), initial_particle_data<kerr>>, kerr, schwarzschild>;
+
+	ofRunApp(window, std::make_shared<ofApp>(N, param, spacetime{}));
 
 	// Let's go
 	auto integrator_thread = std::jthread([&solver]() {

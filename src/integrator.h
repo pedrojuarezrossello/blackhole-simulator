@@ -147,7 +147,7 @@ class schwarzschild_integrator {
 *	If T>E, we redo the same calculation with h_new as our step size. Else we move on.
 */
 
-const float tolerance = 0.05f;
+const float tolerance = 0.009f;
 const MFLOAT tolerance_ps = SET1(tolerance);
 
 class kerr_integrator {

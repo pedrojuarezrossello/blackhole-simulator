@@ -203,14 +203,14 @@ void schwarzschild_integrator::send_data() {
 		_update_directions(&radii_chunk, i);
 		MFLOAT phis_chunk = next_phi(step, i);
 		MFLOAT thetas_chunk = SET1(3.141592f / 2.0f);
-		data.convert_and_add(radii_chunk, phis_chunk, thetas_chunk, i);
+		data.convert_and_add(radii_chunk, phis_chunk, thetas_chunk, _2black_hole_mass, i, schwarzschild {});
 	}
 
 	for (; i < N; ++i) {
 		radii[i] = _next_step_radius_scalar(step, i);
 		_update_directions_scalar(i);
 		phis[i] = _next_step_phi_scalar(step, i);
-		data.convert_and_add(radii[i], phis[i], 3.141592f / 2.0f, i);
+		data.convert_and_add(radii[i], phis[i], 3.141592f / 2.0f, bm_scalar, i, schwarzschild {});
 	}
 	//print_radii();
 	data.send();
@@ -224,11 +224,11 @@ void schwarzschild_integrator::send_initial_data() {
 		MFLOAT radii_chunk = LOAD(&radii[i]);
 		MFLOAT phis_chunk = LOAD(&phis[i]);
 		MFLOAT thetas_chunk = SET1(3.141592f / 2.0f);
-		data.convert_and_add(radii_chunk, phis_chunk, thetas_chunk, i);
+		data.convert_and_add(radii_chunk, phis_chunk, thetas_chunk, _2black_hole_mass, i, schwarzschild {});
 	}
 
 	for (; i < N; ++i)
-		data.convert_and_add(radii[i], phis[i], 3.141592f / 2.0f, i);
+		data.convert_and_add(radii[i], phis[i], 3.141592f / 2.0f, bm_scalar, i, schwarzschild {});
 
 	data.send();
 }
@@ -776,12 +776,12 @@ void kerr_integrator::send_data() {
 	for (; i + subproblem_size <= N; i += subproblem_size) {
 		auto [r, p_r, th, p_th, phi] = next_geodesic(i);
 		MFLOAT step_ps = LOAD(&step[i]);
-		data.convert_and_add(r, phi, th, spin_constant, i);
+		data.convert_and_add(r, phi, th, spin_constant, step_ps, i, kerr {});
 	}
 
 	for (; i < N; ++i) {
 		auto [r, _p_r, th, p_th, phi] = _next_step_geodesic_scalar(i);
-		data.convert_and_add(r, phi, th, a, i);
+		data.convert_and_add(r, phi, th, a, step[i], i, kerr {});
 		radii[i] = r;
 		p_r[i] = _p_r;
 		thetas[i] = th;
@@ -800,11 +800,11 @@ void kerr_integrator::send_initial_data() {
 		auto th = LOAD(&thetas[i]);
 		auto phi = LOAD(&phis[i]);
 		MFLOAT step_ps = LOAD(&step[i]);
-		data.convert_and_add(r, phi, th, spin_constant, i);
+		data.convert_and_add(r, phi, th, spin_constant, step_ps, i, kerr {});
 	}
 
 	for (; i < N; ++i)
-		data.convert_and_add(radii[i], phis[i], thetas[i], a, i);
+		data.convert_and_add(radii[i], phis[i], thetas[i], a, step[i], i, kerr {});
 
 	data.send();
 }

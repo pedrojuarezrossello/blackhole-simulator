@@ -19,6 +19,11 @@ constexpr std::array<std::decay_t<T>, N> create_array(F&& fn, Args&&... args) {
 struct schwarzschild {};
 struct kerr {};
 
+enum particle_state {
+	in_orbit,
+	event_horizon
+};
+
 struct shared_initial_data {
 	std::vector<float> initial_radii;
 	std::vector<float> initial_phis;
@@ -131,7 +136,7 @@ float get_default(const initial_particle_data<T>& data) {
 
 template <typename T>
 struct correct_size {
-	static constexpr bool value = sizeof(T) == 32;
+	static constexpr bool value = sizeof(T) == 4;
 };
 
 // MSCV does not define __FMA__ when AVX2 is enabled
